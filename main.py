@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import math
-import msvcrt
 import os
 import re
 import sys
@@ -26,6 +25,11 @@ import requests
 import yaml
 
 import safe_pipeline
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -1222,7 +1226,10 @@ class _EpisodeLock(AbstractContextManager["_EpisodeLock"]):
                 self.handle.flush()
                 os.fsync(self.handle.fileno())
             self.handle.seek(0)
-            msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+            if os.name == "nt":
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
             self.handle.close()
             self.handle = None
@@ -1234,8 +1241,11 @@ class _EpisodeLock(AbstractContextManager["_EpisodeLock"]):
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         if self.handle is not None:
             try:
-                self.handle.seek(0)
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+                if os.name == "nt":
+                    self.handle.seek(0)
+                    msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
             finally:
                 self.handle.close()
                 self.handle = None
