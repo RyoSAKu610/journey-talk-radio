@@ -640,6 +640,12 @@ def summary_segments(summary: str) -> List[tuple[int, int, str]]:
         while start < len(summary) and summary[start].isspace():
             start += 1
         index = start
+    # Some reputable RSS aggregators expose a headline-style description
+    # without terminal punctuation.  Treat a short, otherwise-safe whole
+    # description as a quotable segment so a transient feed format change does
+    # not stop the daily episode.
+    if not segments and _segment_is_safe(summary, 20, 150):
+        segments.append((0, len(summary), summary))
     return segments
 
 

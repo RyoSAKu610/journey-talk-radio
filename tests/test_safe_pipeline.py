@@ -80,6 +80,10 @@ class SafePipelineRegressionTests(unittest.TestCase):
             run_id=run_id,
         )
 
+    def test_headline_style_summary_without_terminal_punctuation_is_safe(self):
+        summary = "Markets react to an updated global economic outlook from policymakers"
+        self.assertEqual(sp.summary_segment(summary), (0, len(summary), summary))
+
     def test_catalog_is_exact_reviewed_catalog(self):
         self.assertEqual(
             self.catalog.sha256,
