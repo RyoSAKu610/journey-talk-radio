@@ -1,6 +1,16 @@
 name: Journey Talk Daily Radio
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/daily-radio.yml"
+      - "*.py"
+      - "scripts/**"
+      - "tests/**"
+      - "requirements.txt"
+      - "config.yaml"
+      - "safe_catalog.json"
   schedule:
     - cron: "0 6 * * *"
       timezone: "Asia/Tokyo"
@@ -79,8 +89,9 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
-          REQUESTED=true
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish }}" != "true" ]]; then REQUESTED=false; fi
+          REQUESTED=false
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then REQUESTED=true; fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish }}" == "true" ]]; then REQUESTED=true; fi
           READY=true
           for VALUE in "$PODCAST_EMAIL" "$YOUTUBE_CLIENT_ID" "$YOUTUBE_CLIENT_SECRET" "$YOUTUBE_REFRESH_TOKEN"; do
             if [[ -z "$VALUE" ]]; then READY=false; fi
