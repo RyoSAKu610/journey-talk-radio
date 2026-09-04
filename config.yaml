@@ -1,0 +1,73 @@
+program:
+  name: "Journey Talk"
+  target_minutes: 12
+  navigation_language:
+    name: "Japanese"
+    code: "ja-JP"
+  hosts:
+    - id: "MC_F"
+      name: "ミナ"
+      gender: "female"
+    - id: "MC_M"
+      name: "レン"
+      gender: "male"
+
+languages:
+  - name: "English"
+    code: "en-US"
+  - name: "German"
+    code: "de-DE"
+  - name: "Spanish"
+    code: "es-ES"
+  - name: "Russian"
+    code: "ru-RU"
+  - name: "Chinese"
+    code: "zh-CN"
+  - name: "Korean"
+    code: "ko-KR"
+
+ollama:
+  base_url: "http://127.0.0.1:11434"
+  model: "qwen2.5:7b"
+  connection_timeout_seconds: 10
+  generation_timeout_seconds: 900
+  temperature: 0.3
+  context_tokens: 4096
+  max_output_tokens: 1800
+  keep_alive: "5m"
+
+script:
+  news_items: 3
+  minimum_utterances: 110
+  minimum_utterances_per_learning_language: 3
+  minimum_estimated_minutes: 10
+  maximum_estimated_minutes: 15
+  chunk_estimated_seconds:
+    opening: [30, 60]
+    news: [60, 150]
+    expressions: [45, 150]
+    closing: [30, 60]
+  max_generation_attempts: 2
+
+rss:
+  user_agent: "JourneyTalk/0.1 (personal language-learning podcast)"
+  request_timeout_seconds: 30
+  items_per_source: 5
+  max_items: 12
+  summary_max_characters: 600
+  sources:
+    - name: "NHK NEWS WEB"
+      url: "https://news.web.nhk/n-data/conf/na/rss/cat0.xml"
+      source_language: "ja-JP"
+      enabled: true
+    - name: "BBC News World"
+      url: "https://feeds.bbci.co.uk/news/world/rss.xml"
+      source_language: "en-US"
+      enabled: true
+    - name: "Reuters via Google News"
+      url: "https://news.google.com/rss/search?q=when%3A1d%20source%3AReuters&hl=en-US&gl=US&ceid=US%3Aen"
+      source_language: "en-US"
+      enabled: true
+
+output:
+  directory: "output"

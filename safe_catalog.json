@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "supported_languages": [
+    "en-US",
+    "de-DE",
+    "es-ES",
+    "ru-RU",
+    "zh-CN",
+    "ko-KR"
+  ],
+  "variant_ids": {
+    "opening": ["reviewed-v1"],
+    "news": ["reviewed-v1"],
+    "expressions": ["reviewed-v1"],
+    "closing": ["reviewed-v1"]
+  },
+  "pause_profiles": {
+    "brisk": [0, 900, 1800, 2700, 3600, 4500],
+    "balanced": [0, 1000, 2000, 3000, 4000, 5000],
+    "reflective": [0, 1200, 2400, 3600, 4800, 6000]
+  },
+  "base_pauses_ms": {
+    "opening": [450, 500, 400, 500, 450, 800],
+    "news": [350, 650, 350, 450, 350, 450, 350, 450, 350, 450, 350, 450, 350, 800],
+    "expressions": [350, 450, 350, 450, 350, 450, 350, 450, 350, 450, 350, 450, 400, 800],
+    "closing": [400, 500, 400, 400, 450, 900]
+  },
+  "opening": {
+    "ja_welcome": "皆さん、こんにちは。今日も落ち着いて、多言語の音と表現を一緒に学びましょう。",
+    "ja_focus_gloss": "今日は、聞くこと、話すこと、文の形を理解することに集中します。",
+    "ja_source_policy": "ニュースの事実は、あとで示す資料の完全一致引用だけから確かめます。",
+    "ja_transition": "準備ができたら、内容を増やさず、学習の手順に沿って始めましょう。"
+  },
+  "news": {
+    "cues": {
+      "S01": "最初の題材",
+      "S02": "続く題材",
+      "S03": "最後の題材"
+    },
+    "A": {
+      "intro": "{cue}です。次に見出しを原文のまま引用します。引用の内容を注意深く聞きましょう。",
+      "glosses": {
+        "P1": "{cue}の主なポイントを注意深く聞きましょう。",
+        "P2": "{cue}の大切な表現を選び、ゆっくり声に出してください。",
+        "P3": "{cue}に使われている文の語順と組み立て方を見てみましょう。",
+        "P4": "{cue}で気になった単語を選び、もう一度練習してください。",
+        "P5": "{cue}の範囲を越えず、同じ考えを自分の言葉で表してみましょう。",
+        "P6": "{cue}を離れる前に、扱った表現を丁寧に復習しましょう。"
+      }
+    },
+    "B": {
+      "intro": "{cue}を続けます。次に要約を原文のまま引用します。要点を落ち着いて聞きましょう。",
+      "glosses": {
+        "P1": "{cue}の要点を落ち着いて聞き取りましょう。",
+        "P2": "{cue}の重要な言い回しを、急がずはっきり発音しましょう。",
+        "P3": "{cue}の文の形を見て、言葉同士のつながりを確かめます。",
+        "P4": "{cue}でもう一度確かめたい語を選び、落ち着いて練習しましょう。",
+        "P5": "{cue}の範囲を越えず、同じ内容を短い自分の言葉で表しましょう。",
+        "P6": "{cue}で扱った表現を見直し、音と意味を結び付けましょう。"
+      }
+    }
+  },
+  "expressions": {
+    "ja_glosses": {
+      "en-US": "英語では、役立つ表現を選び、自分の簡単な文で使ってみましょう。",
+      "de-DE": "ドイツ語では、語順に注意し、簡単な例文を声に出してみましょう。",
+      "es-ES": "スペイン語では、表現をゆっくり言い、単語を変えて練習しましょう。",
+      "ru-RU": "ロシア語では、表現のリズムを聞き、落ち着いて繰り返しましょう。",
+      "zh-CN": "中国語では、学んだ表現を身近な場面に当てはめてみましょう。",
+      "ko-KR": "韓国語では、学んだ表現を自分の言葉で短く整理しましょう。"
+    },
+    "ja_policy": "どの言語でも、ニュースの新事実ではなく、学び方そのものを練習しました。",
+    "ja_close": "気に入った表現を選び、意味と音を思い出しながら、もう一度声に出してみましょう。"
+  },
+  "closing": {
+    "ja_review": "今日は、注意して聞くこと、声に出すこと、文の形を見ることを練習しました。",
+    "ja_thanks_gloss": "一緒に練習してくださり、ありがとうございました。自分のペースを大切にしてください。",
+    "ja_safety": "引用した資料と学習用の固定表現を分けて確認すると、安心して復習できます。",
+    "ja_encourage": "難しかった表現は、焦らず、音と意味を結び付けながら確かめましょう。",
+    "ja_end": "それでは、今日の練習をここで終えます。次の学習でもお会いしましょう。"
+  },
+  "languages": {
+    "en-US": {
+      "name": "English",
+      "P1": "Let's listen carefully to the main point.",
+      "P2": "Please say the key expression aloud and slowly.",
+      "P3": "Let's look at how this sentence is put together.",
+      "P4": "Which word would you like to repeat?",
+      "P5": "Try expressing the same idea in your own words.",
+      "P6": "Before we move on, let's review this expression carefully.",
+      "opening_welcome": "Welcome to our language practice. Let's learn calmly together.",
+      "opening_focus": "Today we will focus on listening, speaking, and understanding sentence patterns.",
+      "expressions_review": "Choose a useful expression and use it in a simple sentence of your own.",
+      "closing_thanks": "Thank you for practicing with us. Keep learning at your own pace."
+    },
+    "de-DE": {
+      "name": "German",
+      "P1": "Hören wir uns die Hauptaussage aufmerksam an.",
+      "P2": "Sprich den wichtigen Ausdruck bitte langsam und laut aus.",
+      "P3": "Schauen wir uns an, wie dieser Satz aufgebaut ist.",
+      "P4": "Welches Wort möchtest du noch einmal üben?",
+      "P5": "Versuche, denselben Gedanken mit deinen eigenen Worten auszudrücken.",
+      "P6": "Bevor wir weitermachen, sehen wir uns diesen Ausdruck noch einmal genau an.",
+      "opening_welcome": "Willkommen zu unserer Sprachübung. Lernen wir heute in Ruhe zusammen.",
+      "opening_focus": "Heute achten wir auf das Hören, Sprechen und Verstehen von Satzmustern.",
+      "expressions_review": "Achte auf die Wortstellung und sprich danach einen einfachen Beispielsatz.",
+      "closing_thanks": "Danke, dass du mit uns geübt hast. Lerne in deinem eigenen Tempo weiter."
+    },
+    "es-ES": {
+      "name": "Spanish",
+      "P1": "Escuchemos con atención la idea principal.",
+      "P2": "Di despacio y en voz alta la expresión importante.",
+      "P3": "Veamos cómo está construida esta oración.",
+      "P4": "¿Qué palabra te gustaría repetir?",
+      "P5": "Intenta expresar la misma idea con tus propias palabras.",
+      "P6": "Antes de continuar, repasemos con atención esta expresión.",
+      "opening_welcome": "Te damos la bienvenida a nuestra práctica de idiomas. Aprendamos juntos con calma.",
+      "opening_focus": "Hoy vamos a practicar la escucha, el habla y la comprensión de las estructuras.",
+      "expressions_review": "Di la expresión despacio y cambia después una palabra.",
+      "closing_thanks": "Gracias por practicar con nosotros. Sigue aprendiendo a tu propio ritmo."
+    },
+    "ru-RU": {
+      "name": "Russian",
+      "P1": "Давайте внимательно послушаем основную мысль.",
+      "P2": "Пожалуйста, медленно произнесите вслух важное выражение.",
+      "P3": "Давайте посмотрим, как построено это предложение.",
+      "P4": "Какое слово вы хотели бы повторить?",
+      "P5": "Попробуйте выразить ту же мысль своими словами.",
+      "P6": "Прежде чем продолжить, давайте ещё раз внимательно разберём это выражение.",
+      "opening_welcome": "Добро пожаловать на наше языковое занятие. Давайте учиться вместе и спокойно.",
+      "opening_focus": "Сегодня мы будем тренировать слух, речь и понимание структуры предложений.",
+      "expressions_review": "Послушайте ритм выражения и спокойно повторите его.",
+      "closing_thanks": "Спасибо, что занимались вместе с нами. Продолжайте учиться в удобном для вас темпе."
+    },
+    "zh-CN": {
+      "name": "Chinese",
+      "P1": "让我们认真听一听主要意思。",
+      "P2": "请慢慢地大声说出这个重要表达。",
+      "P3": "让我们看看这个句子是怎样组成的。",
+      "P4": "你想再说一遍哪个词语?",
+      "P5": "试着用自己的话表达同样的意思。",
+      "P6": "继续之前,让我们再认真复习一下这个表达。",
+      "opening_welcome": "欢迎参加今天的语言练习。让我们一起轻松地学习。",
+      "opening_focus": "今天我们会练习听、说和理解句子的结构。",
+      "expressions_review": "请把这个表达用在一个熟悉的情景里。",
+      "closing_thanks": "感谢你和我们一起练习。请按照自己的节奏继续学习。"
+    },
+    "ko-KR": {
+      "name": "Korean",
+      "P1": "핵심 내용을 주의 깊게 들어 봅시다.",
+      "P2": "중요한 표현을 천천히 소리 내어 말해 보세요.",
+      "P3": "이 문장이 어떻게 구성되어 있는지 살펴봅시다.",
+      "P4": "어떤 단어를 다시 말해 보고 싶으세요?",
+      "P5": "같은 생각을 자신의 말로 표현해 보세요.",
+      "P6": "다음으로 넘어가기 전에 이 표현을 다시 꼼꼼히 살펴봅시다.",
+      "opening_welcome": "오늘의 언어 연습에 오신 것을 환영합니다. 함께 편안하게 배워 봅시다.",
+      "opening_focus": "오늘은 듣기와 말하기, 그리고 문장 구조 이해를 연습하겠습니다.",
+      "expressions_review": "배운 표현을 자신의 말로 짧게 정리해 보세요.",
+      "closing_thanks": "함께 연습해 주셔서 감사합니다. 자신의 속도로 계속 배워 보세요."
+    }
+  }
+}
