@@ -229,3 +229,49 @@ python scripts/youtube_oauth_setup.py client_secrets.json
 7. 公開された`https://<owner>.github.io/<repo>/feed.xml`をSpotify for Creatorsの「既存の番組」へ一度だけ登録する
 
 SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要です。登録後の新エピソードは、Actionsが更新する同じRSSから自動取得されます。
+
+
+## 6言語 × 各約10分のクラウド版
+
+新しい `.github/workflows/daily-multilang.yml` が日次の主系統です。英語・ドイツ語・スペイン語・ロシア語・中国語・韓国語をそれぞれ独立した約10分番組として生成します。
+
+各番組は3件ずつ別の記事を割り当て、対象言語の会話と日本語解説を組み合わせます。6言語合計で18件の異なる記事レコードを使い、音声はEdge TTS、実行基盤はGitHub Actionsです。
+
+### LLMルーティング
+
+優先順は次の通りです。
+
+1. Venice API — 推奨。既定モデルは `z-ai-glm-5-3-flash`
+2. Featherless API — 任意のフォールバック
+3. Abliteration API — 任意のフォールバック
+
+GitHub ActionsのRepository secretに最低1つのAPIキーを登録してください。推奨は `VENICE_API_KEY` です。
+
+任意フォールバック:
+- `FEATHERLESS_API_KEY`
+- Repository variable `FEATHERLESS_MODEL`（省略時は設定ファイル既定値）
+- `ABLITERATION_API_KEY`
+
+旧 `daily-radio.yml` は既存成果物との互換用として残し、日次scheduleは停止して手動実行専用にしています。
+
+### 毎日の成果物
+
+`daily-multilang.yml` は、各言語について次を作ります。
+
+```text
+output/languages/YYYY-MM-DD/en.json
+output/languages/YYYY-MM-DD/de.json
+output/languages/YYYY-MM-DD/es.json
+output/languages/YYYY-MM-DD/ru.json
+output/languages/YYYY-MM-DD/zh.json
+output/languages/YYYY-MM-DD/ko.json
+
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-en.mp3
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-de.mp3
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-es.mp3
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ru.mp3
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-zh.mp3
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ko.mp3
+```
+
+定期実行では6本のMP3を同日のGitHub Releaseへ公開します。
