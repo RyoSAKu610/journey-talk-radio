@@ -1,0 +1,94 @@
+provider:
+  order:
+    - venice
+    - featherless
+    - abliteration
+
+  venice:
+    base_url: "https://api.venice.ai/api/v1"
+    api_key_env: "VENICE_API_KEY"
+    model: "z-ai-glm-5-3-flash"
+
+  featherless:
+    base_url: "https://api.featherless.ai/v1"
+    api_key_env: "FEATHERLESS_API_KEY"
+    model_env: "FEATHERLESS_MODEL"
+    model: "Qwen/Qwen3-32B"
+
+  abliteration:
+    base_url: "https://api.abliteration.ai/v1"
+    api_key_env: "ABLITERATION_API_KEY"
+    model: "abliterated-model"
+
+episode:
+  target_seconds: 600
+  stories_per_language: 3
+  min_utterances: 32
+  max_utterances: 44
+  temperature: 0.35
+  max_tokens: 6500
+
+news:
+  request_timeout_seconds: 25
+  items_per_source: 8
+  max_candidates: 48
+  sources:
+    - name: "BBC World"
+      url: "https://feeds.bbci.co.uk/news/world/rss.xml"
+    - name: "Reuters"
+      url: "https://news.google.com/rss/search?q=when%3A1d%20source%3AReuters&hl=en-US&gl=US&ceid=US%3Aen"
+    - name: "NHK"
+      url: "https://news.web.nhk/n-data/conf/na/rss/cat0.xml"
+    - name: "Google News Germany"
+      url: "https://news.google.com/rss?hl=de&gl=DE&ceid=DE%3Ade"
+    - name: "Google News Spain"
+      url: "https://news.google.com/rss?hl=es&gl=ES&ceid=ES%3Aes"
+    - name: "Google News Korea"
+      url: "https://news.google.com/rss?hl=ko&gl=KR&ceid=KR%3Ako"
+
+languages:
+  - code: "en-US"
+    slug: "en"
+    name: "English"
+    japanese_name: "英語"
+    voice_f: "en-US-JennyNeural"
+    voice_m: "en-US-GuyNeural"
+
+  - code: "de-DE"
+    slug: "de"
+    name: "German"
+    japanese_name: "ドイツ語"
+    voice_f: "de-DE-KatjaNeural"
+    voice_m: "de-DE-ConradNeural"
+
+  - code: "es-ES"
+    slug: "es"
+    name: "Spanish"
+    japanese_name: "スペイン語"
+    voice_f: "es-ES-ElviraNeural"
+    voice_m: "es-ES-AlvaroNeural"
+
+  - code: "ru-RU"
+    slug: "ru"
+    name: "Russian"
+    japanese_name: "ロシア語"
+    voice_f: "ru-RU-SvetlanaNeural"
+    voice_m: "ru-RU-DmitryNeural"
+
+  - code: "zh-CN"
+    slug: "zh"
+    name: "Chinese"
+    japanese_name: "中国語"
+    voice_f: "zh-CN-XiaoxiaoNeural"
+    voice_m: "zh-CN-YunxiNeural"
+
+  - code: "ko-KR"
+    slug: "ko"
+    name: "Korean"
+    japanese_name: "韓国語"
+    voice_f: "ko-KR-SunHiNeural"
+    voice_m: "ko-KR-InJoonNeural"
+
+japanese_voices:
+  MC_F: "ja-JP-NanamiNeural"
+  MC_M: "ja-JP-KeitaNeural"
