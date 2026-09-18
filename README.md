@@ -195,14 +195,15 @@ Windowsの「タスク スケジューラ」で、プログラムをPowerShell�
 7. YouTube Data APIへ動画を投稿
 8. 月曜日の実行時に、直近の成功・失敗、ブロッカー、次のマイルストーンをGitHub Issueへ記録
 
-手動実行では`publish=false`が既定で、生成・検証だけを安全に試せます。定期実行は、下記の設定がすべて存在するときだけ公開します。不足時は成果物をartifactへ残し、外部公開を行いません。
+手動実行では`publish=false`が既定で、生成・検証だけを安全に試せます。定期実行は追加シークレットなしでもMP3をGitHub Releaseへ公開します。RSS / GitHub Pages / YouTubeは独立した任意チャンネルで、設定済みのものだけ有効になります。設定不足があっても日次ビルドとRelease公開は止まりません。
 
 ### Repository variable
 
-- `PODCAST_EMAIL`（必須）: Spotifyによる所有確認用。RSSに公開されるため、公開専用アドレスを推奨
+- `PODCAST_EMAIL`（RSSを使う場合のみ必須）: Spotify等の所有確認用。RSSに公開されるため、公開専用アドレスを推奨
 - `PODCAST_AUTHOR`（任意）: 既定値は`Journey Talk`
 - `PODCAST_DESCRIPTION`（任意）
 - `PODCAST_BASE_URL`（任意）: 独自ドメイン利用時のみ。未設定ならGitHub Pages URLを使用
+- `ENABLE_PAGES`（任意）: GitHub Pagesを設定済みの場合だけ`true`にする
 
 ### Actions secrets
 
