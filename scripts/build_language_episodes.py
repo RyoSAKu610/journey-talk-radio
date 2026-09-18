@@ -103,6 +103,65 @@ def collect_news(cfg):
     return out
 
 
+def choose_assignments(p, cfg, news):
+    per = cfg["episode"]["stories_per_language"]
+    languages = cfg["languages"]
+    needed = len(languages) * per
+    fallback = {}
+    offset = 0
+    for lang in languages:
+        fallback[lang["code"]] = [x["id"] for x in news[offset:offset + per]]
+        offset += per
+
+    compact = [
+        {
+            "id": x["id"],
+            "source": x["source"],
+            "title": x["title"],
+            "summary": x["summary"][:350],
+        }
+        for x in news
+    ]
+    prompt = (
+        "Assign exactly %d news IDs to each language. No ID may be reused. "
+        "More importantly, do not assign two articles about the same underlying event "
+        "to different language editions. Prefer a broad mix of topics. "
+        "Return JSON only as {\"assignments\": {\"en-US\": [\"N01\", ...]}}.\n\n"
+        "Languages: %s\n\nCandidates: %s"
+        % (
+            per,
+            json.dumps([{"code": x["code"], "name": x["name"]} for x in languages], ensure_ascii=False),
+            json.dumps(compact, ensure_ascii=False),
+        )
+    )
+    try:
+        data = call_llm(
+            p,
+            [
+                {"role": "system", "content": "You are a careful multilingual news editor. Stay neutral and factual."},
+                {"role": "user", "content": prompt},
+            ],
+            0.1,
+            1800,
+        )
+        raw = data["assignments"]
+        valid = {x["id"] for x in news}
+        used = set()
+        checked = {}
+        for lang in languages:
+            ids = [str(x) for x in raw[lang["code"]]]
+            if len(ids) != per or any(x not in valid for x in ids) or any(x in used for x in ids):
+                raise ValueError("invalid assignment")
+            used.update(ids)
+            checked[lang["code"]] = ids
+        if len(used) != needed:
+            raise ValueError("assignment does not cover enough unique stories")
+        return checked
+    except Exception as exc:
+        print("[warn] semantic news assignment failed; using unique-record fallback:", exc)
+        return fallback
+
+
 def prompt_for(date, lang, stories, cfg):
     ec = cfg["episode"]
     return f"""
@@ -199,10 +258,11 @@ def main():
     day.mkdir(parents=True, exist_ok=True)
     manifest = {"episode_date": args.date, "provider": p[0], "model": p[3], "episodes": []}
 
-    offset = 0
+    assignments = choose_assignments(p, cfg, news)
+    by_id = {x["id"]: x for x in news}
+
     for lang in cfg["languages"]:
-        stories = news[offset:offset + per]
-        offset += per
+        stories = [by_id[x] for x in assignments[lang["code"]]]
         data = call_llm(
             p,
             [
