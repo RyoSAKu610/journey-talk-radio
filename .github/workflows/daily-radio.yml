@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish to GitHub Releases, Spotify RSS and YouTube"
+        description: "Publish MP3 release and any configured channels"
         required: true
         type: boolean
         default: false
@@ -38,10 +38,13 @@ jobs:
     env:
       PYTHONUNBUFFERED: "1"
       TZ: Asia/Tokyo
-    steps:
-      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -67,24 +70,24 @@ jobs:
       - name: Render multilingual audio and video
         run: |
           DATE="${{ steps.date.outputs.value }}"
-          python scripts/render_media.py \
-            --episode "output/${DATE}_podcast.json" \
-            --output-dir "build/${DATE}"
+          python scripts/render_media.py             --episode "output/${DATE}_podcast.json"             --output-dir "build/${DATE}"
 
       - name: Upload verified build artifact
         uses: actions/upload-artifact@v6
         with:
           name: journey-talk-${{ steps.date.outputs.value }}
+          retention-days: 7
           path: |
             output/${{ steps.date.outputs.value }}_podcast.json
             output/${{ steps.date.outputs.value }}_podcast.md
             output/${{ steps.date.outputs.value }}_podcast.done.json
             build/${{ steps.date.outputs.value }}/
 
-      - name: Check publish configuration
+      - name: Resolve publication channels
         id: publish
         env:
           PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
+          ENABLE_PAGES: ${{ vars.ENABLE_PAGES }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
@@ -92,28 +95,68 @@ jobs:
           REQUESTED=false
           if [[ "${{ github.event_name }}" == "schedule" ]]; then REQUESTED=true; fi
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish }}" == "true" ]]; then REQUESTED=true; fi
-          READY=true
-          for VALUE in "$PODCAST_EMAIL" "$YOUTUBE_CLIENT_ID" "$YOUTUBE_CLIENT_SECRET" "$YOUTUBE_REFRESH_TOKEN"; do
-            if [[ -z "$VALUE" ]]; then READY=false; fi
-          done
-          echo "enabled=$([[ "$REQUESTED" == true && "$READY" == true ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          if [[ "$REQUESTED" == true && "$READY" != true ]]; then
-            echo "Publishing skipped: configure PODCAST_EMAIL and the three YOUTUBE_* secrets." >> "$GITHUB_STEP_SUMMARY"
+
+          RELEASE=false
+          FEED=false
+          PAGES=false
+          YOUTUBE=false
+
+          if [[ "$REQUESTED" == true ]]; then
+            RELEASE=true
+
+            if [[ -n "$PODCAST_EMAIL" ]]; then
+              FEED=true
+            fi
+
+            if [[ "$FEED" == true && "${ENABLE_PAGES,,}" == "true" ]]; then
+              PAGES=true
+            fi
+
+            if [[ -n "$YOUTUBE_CLIENT_ID" && -n "$YOUTUBE_CLIENT_SECRET" && -n "$YOUTUBE_REFRESH_TOKEN" ]]; then
+              YOUTUBE=true
+            fi
           fi
 
-      - name: Publish MP3 as a release asset
-        if: steps.publish.outputs.enabled == 'true'
+          {
+            echo "release=$RELEASE"
+            echo "feed=$FEED"
+            echo "pages=$PAGES"
+            echo "youtube=$YOUTUBE"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Journey Talk cloud run"
+            echo ""
+            echo "- Publish requested: $REQUESTED"
+            echo "- GitHub Release MP3: $RELEASE"
+            echo "- Podcast RSS update: $FEED"
+            echo "- GitHub Pages deploy: $PAGES"
+            echo "- YouTube upload: $YOUTUBE"
+            echo ""
+            if [[ "$REQUESTED" == true && "$FEED" != true ]]; then
+              echo "> RSS is skipped until repository variable PODCAST_EMAIL is configured."
+            fi
+            if [[ "$REQUESTED" == true && "$PAGES" != true ]]; then
+              echo "> Pages deployment is optional. Set ENABLE_PAGES=true after GitHub Pages is configured."
+            fi
+            if [[ "$REQUESTED" == true && "$YOUTUBE" != true ]]; then
+              echo "> YouTube is optional and skipped until all three YOUTUBE_* secrets are configured."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish MP3 as GitHub Release asset
+        if: steps.publish.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           DATE="${{ steps.date.outputs.value }}"
           TAG="episode-${DATE}"
           AUDIO="build/${DATE}/journey-talk-${DATE}.mp3"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Journey Talk — ${DATE}" --notes "Automated daily episode for ${DATE}."
+          gh release view "$TAG" >/dev/null 2>&1 ||             gh release create "$TAG"               --title "Journey Talk — ${DATE}"               --notes "Automated multilingual daily episode for ${DATE}."
           gh release upload "$TAG" "$AUDIO" --clobber
 
       - name: Update podcast RSS
-        if: steps.publish.outputs.enabled == 'true'
+        if: steps.publish.outputs.feed == 'true'
         env:
           PODCAST_AUTHOR: ${{ vars.PODCAST_AUTHOR }}
           PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
@@ -126,58 +169,48 @@ jobs:
           DESCRIPTION="${PODCAST_DESCRIPTION:-世界のニュースで毎日ことばを旅する、多言語学習ラジオ。}"
           AUDIO_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/episode-${DATE}/journey-talk-${DATE}.mp3"
           cp "build/${DATE}/journey-talk-${DATE}.png" docs/cover.png
-          python scripts/build_feed.py \
-            --episode "output/${DATE}_podcast.json" \
-            --manifest "build/${DATE}/media-manifest.json" \
-            --feed docs/feed.xml --base-url "$BASE_URL" --audio-url "$AUDIO_URL" \
-            --author "$AUTHOR" --email "$PODCAST_EMAIL" --description "$DESCRIPTION"
+          python scripts/build_feed.py             --episode "output/${DATE}_podcast.json"             --manifest "build/${DATE}/media-manifest.json"             --feed docs/feed.xml             --base-url "$BASE_URL"             --audio-url "$AUDIO_URL"             --author "$AUTHOR"             --email "$PODCAST_EMAIL"             --description "$DESCRIPTION"
 
       - name: Upload to YouTube
-        if: steps.publish.outputs.enabled == 'true'
+        if: steps.publish.outputs.youtube == 'true'
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
           DATE="${{ steps.date.outputs.value }}"
-          python scripts/upload_youtube.py \
-            --video "build/${DATE}/journey-talk-${DATE}.mp4" \
-            --episode "output/${DATE}_podcast.json" \
-            --state "docs/episodes/${DATE}.json" --privacy public
+          python scripts/upload_youtube.py             --video "build/${DATE}/journey-talk-${DATE}.mp4"             --episode "output/${DATE}_podcast.json"             --state "docs/episodes/${DATE}.json"             --privacy public
 
-      - name: Commit feed and publication state
-        if: steps.publish.outputs.enabled == 'true'
+      - name: Commit podcast feed and publication state
+        if: steps.publish.outputs.feed == 'true' || steps.publish.outputs.youtube == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/feed.xml docs/cover.png docs/episodes
+          git add docs/feed.xml docs/cover.png docs/episodes 2>/dev/null || true
           git diff --cached --quiet || git commit -m "publish: Journey Talk ${{ steps.date.outputs.value }}"
           git push
 
       - name: Configure Pages
-        if: steps.publish.outputs.enabled == 'true'
+        if: steps.publish.outputs.pages == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
-        if: steps.publish.outputs.enabled == 'true'
+        if: steps.publish.outputs.pages == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: docs
 
       - name: Deploy podcast site and RSS
-        if: steps.publish.outputs.enabled == 'true'
-        id: deployment
+        if: steps.publish.outputs.pages == 'true'
         uses: actions/deploy-pages@v4
 
       - name: Create Monday status report
-        if: steps.publish.outputs.enabled == 'true'
+        if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "$(date +%u)" != "1" ]]; then exit 0; fi
           DATE="${{ steps.date.outputs.value }}"
           gh run list --workflow daily-radio.yml --limit 7 --json conclusion,createdAt,databaseId,url > build/runs.json
-          python scripts/weekly_status.py \
-            --runs build/runs.json --manifest "build/${DATE}/media-manifest.json" \
-            --youtube-state "docs/episodes/${DATE}.json" --output build/weekly-status.md
-          gh issue create --title "Journey Talk weekly status — ${DATE}" --body-file build/weekly-status.md
+          python scripts/weekly_status.py             --runs build/runs.json             --manifest "build/${DATE}/media-manifest.json"             --youtube-state "docs/episodes/${DATE}.json"             --output build/weekly-status.md
+          gh issue create             --title "Journey Talk weekly status — ${DATE}"             --body-file build/weekly-status.md
