@@ -1,4 +1,4 @@
-name: Journey Talk Multilang Daily
+name: Journey Talk Cloud Daily
 
 on:
   push:
@@ -8,124 +8,127 @@ on:
       - "cloud_languages.yaml"
       - "scripts/build_language_episodes.py"
       - "scripts/render_language_episodes.py"
+      - "scripts/qa_language_episodes.py"
+      - "scripts/publish_multilang_site.py"
+      - "docs/index.html"
       - "requirements.txt"
   schedule:
-    - cron: "10 6 * * *"
-      timezone: "Asia/Tokyo"
+    - cron: "0 22 * * *"
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish the six MP3s to a GitHub Release"
-        required: true
-        type: boolean
-        default: true
 
 concurrency:
-  group: journey-talk-multilang-daily
+  group: journey-talk-cloud-daily
   cancel-in-progress: false
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  build:
+  build-publish:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: \${{ steps.deployment.outputs.page_url }}
     env:
-      PYTHONUNBUFFERED: "1"
       TZ: Asia/Tokyo
-      VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
-      FEATHERLESS_API_KEY: ${{ secrets.FEATHERLESS_API_KEY }}
-      FEATHERLESS_MODEL: ${{ vars.FEATHERLESS_MODEL }}
-      ABLITERATION_API_KEY: ${{ secrets.ABLITERATION_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+      GEMINI_API_KEY: \${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: \${{ vars.GEMINI_MODEL }}
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install audio and Python dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pip install --requirement requirements.txt
 
-      - name: Static verification
+      - name: Verify cloud contract
         run: |
-          python -m py_compile scripts/build_language_episodes.py scripts/render_language_episodes.py
+          test -n "$GEMINI_API_KEY" || { echo "GEMINI_API_KEY repository secret is required"; exit 1; }
+          python -m py_compile scripts/build_language_episodes.py scripts/render_language_episodes.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
           python - <<'PY'
           import yaml
           cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))
-          assert len(cfg["languages"]) == 6
-          assert cfg["episode"]["target_seconds"] == 600
-          assert cfg["episode"]["stories_per_language"] == 3
-          assert len({x["code"] for x in cfg["languages"]}) == 6
+          assert [x["slug"] for x in cfg["languages"]] == ["de", "es", "ru", "zh", "ko"]
+          assert cfg["episode"]["minimum_seconds"] == 600
+          assert cfg["episode"]["maximum_seconds"] == 900
           print("cloud contract: PASS")
           PY
 
-      - name: Resolve date and provider
-        id: prep
-        shell: bash
-        run: |
-          echo "date=$(date +%F)" >> "$GITHUB_OUTPUT"
-          PROVIDER=""
-          if [[ -n "$VENICE_API_KEY" ]]; then
-            PROVIDER="venice"
-          elif [[ -n "$FEATHERLESS_API_KEY" ]]; then
-            PROVIDER="featherless"
-          elif [[ -n "$ABLITERATION_API_KEY" ]]; then
-            PROVIDER="abliteration"
-          fi
-          echo "provider=$PROVIDER" >> "$GITHUB_OUTPUT"
-          if [[ -z "$PROVIDER" ]]; then
-            echo "No cloud LLM key is configured. Add VENICE_API_KEY (recommended) or a fallback provider key." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Provider: $PROVIDER" >> "$GITHUB_STEP_SUMMARY"
-          fi
+      - name: Resolve Japan date
+        id: day
+        run: echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
 
-      - name: Build six independent bilingual episodes
-        if: steps.prep.outputs.provider != ''
+      - name: Generate five language editions
         run: |
-          DATE="${{ steps.prep.outputs.date }}"
+          DATE="\${{ steps.day.outputs.date }}"
           python scripts/build_language_episodes.py --date "$DATE"
 
-      - name: Render six ten-minute MP3s
-        if: steps.prep.outputs.provider != ''
+      - name: Render five MP3 files
         run: |
-          DATE="${{ steps.prep.outputs.date }}"
-          python scripts/render_language_episodes.py             --episode-dir "output/languages/$DATE"             --output-dir "build/languages/$DATE"
+          DATE="\${{ steps.day.outputs.date }}"
+          python scripts/render_language_episodes.py \
+            --episode-dir "output/languages/$DATE" \
+            --output-dir "build/languages/$DATE"
 
-      - name: Upload build artifact
-        if: steps.prep.outputs.provider != ''
-        uses: actions/upload-artifact@v6
-        with:
-          name: journey-talk-multilang-${{ steps.prep.outputs.date }}
-          retention-days: 7
-          path: |
-            output/languages/${{ steps.prep.outputs.date }}/
-            build/languages/${{ steps.prep.outputs.date }}/
+      - name: Full-file audio QA and Whisper verification
+        run: |
+          DATE="\${{ steps.day.outputs.date }}"
+          python scripts/qa_language_episodes.py \
+            --episode-dir "output/languages/$DATE" \
+            --media-dir "build/languages/$DATE" \
+            --output-dir "build/qa/$DATE"
 
-      - name: Publish six MP3s to GitHub Release
-        if: >-
-          steps.prep.outputs.provider != '' &&
-          (github.event_name == 'schedule' ||
-           (github.event_name == 'workflow_dispatch' && inputs.publish == true))
+      - name: Publish date-stamped cloud archive
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: \${{ github.token }}
         run: |
-          DATE="${{ steps.prep.outputs.date }}"
-          TAG="multilang-${DATE}"
-          gh release view "$TAG" >/dev/null 2>&1 ||             gh release create "$TAG"               --title "Journey Talk Multilang — ${DATE}"               --notes "Six independent ~10 minute bilingual language-learning news episodes."
+          DATE="\${{ steps.day.outputs.date }}"
+          TAG="multilang-\${DATE}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
+            --title "Journey Talk — \${DATE}" \
+            --notes "Five verified 10–15 minute language-learning MP3 editions generated from current RSS news."
           gh release upload "$TAG" build/languages/"$DATE"/*.mp3 --clobber
+          gh release upload "$TAG" output/languages/"$DATE"/*.json output/languages/"$DATE"/*.md --clobber
+          gh release upload "$TAG" build/qa/"$DATE"/* --clobber
 
-      - name: Summary
-        if: always()
+      - name: Update feed and mobile web index
         run: |
-          echo "## Contract" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 6 independent language editions" >> "$GITHUB_STEP_SUMMARY"
-          echo "- English, German, Spanish, Russian, Chinese, Korean" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 3 unique RSS stories assigned to each edition (18 unique article records total)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Target language + Japanese explanation" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Audio normalized to approximately 10 minutes per edition" >> "$GITHUB_STEP_SUMMARY"
+          DATE="\${{ steps.day.outputs.date }}"
+          python scripts/publish_multilang_site.py \
+            --date "$DATE" \
+            --episode-dir "output/languages/$DATE" \
+            --media-dir "build/languages/$DATE" \
+            --docs-dir docs
+
+      - name: Persist feed and episode history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/episodes.json docs/feed.xml
+          git diff --cached --quiet || git commit -m "publish: Journey Talk \${{ steps.day.outputs.date }}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload mobile site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+
+      - name: Deploy mobile site
+        id: deployment
+        uses: actions/deploy-pages@v4
