@@ -15,69 +15,63 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
 
 
-def load_config():
+def load_config() -> dict:
     return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
 
 
-def voice_for(cfg, language, speaker):
+def voice_for(cfg: dict, language: str, speaker: str) -> str:
     if language == "ja-JP":
         return cfg["japanese_voices"][speaker]
     for item in cfg["languages"]:
         if item["code"] == language:
             return item["voice_f"] if speaker == "MC_F" else item["voice_m"]
-    raise ValueError("No voice for " + language + " / " + speaker)
+    raise ValueError(f"No voice for {language} / {speaker}")
 
 
-async def synthesize(cfg, utterances, work):
-    paths = []
-    for i, utterance in enumerate(utterances):
+async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> list[Path]:
+    paths: list[Path] = []
+    for index, utterance in enumerate(utterances):
         voice = voice_for(cfg, utterance["language"], utterance["speaker"])
-        path = work / ("%03d.mp3" % i)
+        path = work / f"{index:03d}.mp3"
         await edge_tts.Communicate(utterance["text"], voice=voice).save(str(path))
         if not path.is_file() or path.stat().st_size == 0:
-            raise RuntimeError("TTS failed at utterance %d" % i)
+            raise RuntimeError(f"TTS failed at utterance {index}")
         paths.append(path)
     return paths
 
 
-def assemble(paths, utterances):
+def assemble(paths: list[Path], utterances: list[dict]) -> AudioSegment:
     audio = AudioSegment.empty()
+    previous_language = None
     for path, utterance in zip(paths, utterances):
-        audio += AudioSegment.from_file(path, format="mp3")
-        pause = 650 if utterance["language"] == "ja-JP" else 500
-        audio += AudioSegment.silent(duration=pause)
+        segment = AudioSegment.from_file(path, format="mp3")
+        audio += segment
+        if previous_language is None or utterance["language"] == previous_language:
+            pause_ms = 480
+        else:
+            pause_ms = 650
+        audio += AudioSegment.silent(duration=pause_ms)
+        previous_language = utterance["language"]
     return audio
 
 
-def normalize_to_target(audio, target_ms, output):
-    raw_ms = len(audio)
-    ratio = raw_ms / target_ms
-    if not 0.75 <= ratio <= 1.35:
-        raise RuntimeError(
-            "Raw duration %.1fs is too far from target %.1fs" % (raw_ms / 1000, target_ms / 1000)
-        )
+def export_normalized(audio: AudioSegment, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    if 0.97 <= ratio <= 1.03:
-        audio.export(output, format="mp3", bitrate="192k", tags={"artist": "Journey Talk"})
-        return raw_ms / 1000
-
-    with tempfile.TemporaryDirectory(prefix="journey-talk-lang-") as temp:
-        raw = Path(temp) / "raw.wav"
-        adjusted = Path(temp) / "adjusted.wav"
-        audio.export(raw, format="wav")
+    with tempfile.TemporaryDirectory(prefix="journey-talk-normalize-") as temp:
+        source = Path(temp) / "source.wav"
+        audio.export(source, format="wav")
         subprocess.run(
             [
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-i", str(raw), "-filter:a", "atempo=%.6f" % ratio, str(adjusted),
+                "-i", str(source),
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-codec:a", "libmp3lame", "-b:a", "192k", str(output),
             ],
             check=True,
         )
-        adjusted_audio = AudioSegment.from_file(adjusted, format="wav")
-        adjusted_audio.export(output, format="mp3", bitrate="192k", tags={"artist": "Journey Talk"})
-        return len(adjusted_audio) / 1000
 
 
-def probe(path):
+def probe_duration(path: Path) -> float:
     result = subprocess.run(
         [
             "ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -90,45 +84,48 @@ def probe(path):
     return float(result.stdout.strip())
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--episode-dir", type=Path, required=True)
-    ap.add_argument("--output-dir", type=Path, required=True)
-    args = ap.parse_args()
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--episode-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    args = parser.parse_args()
 
     cfg = load_config()
     manifest = json.loads((args.episode_dir / "manifest.json").read_text(encoding="utf-8"))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     media = {"episode_date": manifest["episode_date"], "episodes": []}
+    minimum = float(cfg["episode"]["minimum_seconds"])
+    maximum = float(cfg["episode"]["maximum_seconds"])
 
     for item in manifest["episodes"]:
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
         slug = item["slug"]
-        output = args.output_dir / ("journey-talk-%s-%s.mp3" % (manifest["episode_date"], slug))
+        output = args.output_dir / f"journey-talk-{manifest['episode_date']}-{slug}.mp3"
         with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
             paths = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
             audio = assemble(paths, episode["utterances"])
-            normalize_to_target(audio, int(episode["target_seconds"]) * 1000, output)
-
-        seconds = probe(output)
-        if not 570 <= seconds <= 630:
-            raise RuntimeError("%s duration %.2fs violates 10 minute target" % (slug, seconds))
+            export_normalized(audio, output)
+        duration = probe_duration(output)
+        if not minimum <= duration <= maximum:
+            raise RuntimeError(f"{slug} duration {duration:.2f}s outside {minimum:.0f}..{maximum:.0f}s")
         media["episodes"].append(
             {
                 "slug": slug,
                 "language": episode["language"],
+                "japanese_name": episode["japanese_name"],
+                "title": episode["title"],
                 "audio": output.name,
-                "duration_seconds": round(seconds, 3),
+                "duration_seconds": round(duration, 3),
                 "bytes": output.stat().st_size,
             }
         )
-        print("[audio]", slug, round(seconds, 2), "seconds")
+        print(f"[audio] {slug}: {duration:.2f}s")
 
     (args.output_dir / "media-manifest.json").write_text(
-        json.dumps(media, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+        json.dumps(media, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
