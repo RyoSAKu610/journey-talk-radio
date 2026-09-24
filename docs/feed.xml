@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>Journey Talk</title>
+    <link>https://ryosaku610.github.io/journey-talk-radio</link>
+    <language>ja</language>
+    <description>最新ニュースを題材にした、ドイツ語・スペイン語・ロシア語・中国語・韓国語のデイリー語学ラジオ。</description>
+    <itunes:author>Journey Talk</itunes:author>
+    <itunes:explicit>false</itunes:explicit>
+    <atom:link href="https://ryosaku610.github.io/journey-talk-radio/feed.xml" rel="self" type="application/rss+xml" />
+  </channel>
+</rss>
