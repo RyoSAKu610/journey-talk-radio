@@ -30,12 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: \${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
     env:
       TZ: Asia/Tokyo
       PYTHONUNBUFFERED: "1"
-      GEMINI_API_KEY: \${{ secrets.GEMINI_API_KEY }}
-      GEMINI_MODEL: \${{ vars.GEMINI_MODEL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
 
     steps:
       - uses: actions/checkout@v6
@@ -72,19 +72,19 @@ jobs:
 
       - name: Generate five language editions
         run: |
-          DATE="\${{ steps.day.outputs.date }}"
+          DATE="${{ steps.day.outputs.date }}"
           python scripts/build_language_episodes.py --date "$DATE"
 
       - name: Render five MP3 files
         run: |
-          DATE="\${{ steps.day.outputs.date }}"
+          DATE="${{ steps.day.outputs.date }}"
           python scripts/render_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
             --output-dir "build/languages/$DATE"
 
       - name: Full-file audio QA and Whisper verification
         run: |
-          DATE="\${{ steps.day.outputs.date }}"
+          DATE="${{ steps.day.outputs.date }}"
           python scripts/qa_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
             --media-dir "build/languages/$DATE" \
@@ -92,12 +92,12 @@ jobs:
 
       - name: Publish date-stamped cloud archive
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          DATE="\${{ steps.day.outputs.date }}"
-          TAG="multilang-\${DATE}"
+          DATE="${{ steps.day.outputs.date }}"
+          TAG="multilang-${DATE}"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
-            --title "Journey Talk — \${DATE}" \
+            --title "Journey Talk — ${DATE}" \
             --notes "Five verified 10–15 minute language-learning MP3 editions generated from current RSS news."
           gh release upload "$TAG" build/languages/"$DATE"/*.mp3 --clobber
           gh release upload "$TAG" output/languages/"$DATE"/*.json output/languages/"$DATE"/*.md --clobber
@@ -105,7 +105,7 @@ jobs:
 
       - name: Update feed and mobile web index
         run: |
-          DATE="\${{ steps.day.outputs.date }}"
+          DATE="${{ steps.day.outputs.date }}"
           python scripts/publish_multilang_site.py \
             --date "$DATE" \
             --episode-dir "output/languages/$DATE" \
@@ -117,7 +117,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/episodes.json docs/feed.xml
-          git diff --cached --quiet || git commit -m "publish: Journey Talk \${{ steps.day.outputs.date }}"
+          git diff --cached --quiet || git commit -m "publish: Journey Talk ${{ steps.day.outputs.date }}"
           git pull --rebase origin main
           git push origin HEAD:main
 
