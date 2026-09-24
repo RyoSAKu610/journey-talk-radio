@@ -1,9 +1,65 @@
 <!doctype html>
 <html lang="ja">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Journey Talk</title>
-<style>
-body{margin:0;background:#090d1a;color:#f6fbff;font:18px/1.7 system-ui,sans-serif}main{max-width:760px;margin:10vh auto;padding:36px}.card{background:#111a33;border:1px solid #62e6ff;border-radius:24px;padding:36px}h1{font-size:clamp(42px,8vw,78px);margin:0;color:#62e6ff}a{color:#f7c75e}
-</style>
-<main><div class="card"><h1>Journey Talk</h1><p>世界のニュースで、毎日ことばを旅する。</p><p>ドイツ語・スペイン語・ロシア語・中国語・韓国語を、日本語ナビで巡る10〜15分のデイリーラジオです。</p><p><a href="feed.xml">Podcast RSS</a></p></div></main>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>Journey Talk</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    body { margin:0; background:#f4f5f7; color:#111827; }
+    main { max-width:920px; margin:auto; padding:24px 16px 56px; }
+    header { margin-bottom:24px; }
+    h1 { margin:0 0 8px; font-size:2rem; }
+    .sub { color:#596273; margin:0; }
+    .feed { display:inline-block; margin-top:12px; }
+    .day { background:white; border-radius:18px; padding:18px; margin:18px 0; box-shadow:0 4px 18px rgba(0,0,0,.06); }
+    .day h2 { margin:0 0 12px; }
+    .episode { border-top:1px solid #e5e7eb; padding:16px 0; }
+    .episode:first-of-type { border-top:0; }
+    .episode h3 { margin:0 0 8px; font-size:1.05rem; }
+    audio { width:100%; margin:6px 0 8px; }
+    a.button { display:inline-block; padding:9px 12px; border-radius:10px; text-decoration:none; background:#111827; color:white; margin-right:8px; }
+    .meta { font-size:.85rem; color:#6b7280; }
+    @media (prefers-color-scheme: dark) {
+      body { background:#0b1020; color:#f8fafc; }
+      .day { background:#151b2d; box-shadow:none; }
+      .episode { border-color:#2c3449; }
+      .sub,.meta { color:#aab3c3; }
+      a.button { background:#f8fafc; color:#111827; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Journey Talk</h1>
+    <p class="sub">最新ニュースで毎日学ぶ、5言語の10〜15分ポッドキャスト。</p>
+    <a class="feed" href="feed.xml">RSS / feed.xml</a>
+  </header>
+  <div id="episodes">読み込み中…</div>
+</main>
+<script>
+const labels = {de:"🇩🇪 ドイツ語", es:"🇪🇸 スペイン語", ru:"🇷🇺 ロシア語", zh:"🇨🇳 中国語", ko:"🇰🇷 韓国語"};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+fetch('episodes.json', {cache:'no-store'}).then(r => r.json()).then(days => {
+  const root = document.getElementById('episodes');
+  if (!days.length) { root.textContent = 'まだ公開済みエピソードはありません。'; return; }
+  root.innerHTML = days.map(day => `
+    <section class="day">
+      <h2>${esc(day.date)}</h2>
+      ${day.episodes.map(ep => `
+        <article class="episode">
+          <h3>${labels[ep.slug] || esc(ep.japanese_name)} — ${esc(ep.title)}</h3>
+          <div class="meta">${Math.round(ep.duration_seconds/60)}分</div>
+          <audio controls preload="none" src="${esc(ep.audio_url)}"></audio>
+          <div>
+            <a class="button" href="${esc(ep.audio_url)}" download>MP3ダウンロード</a>
+            <a href="${esc(ep.script_url)}">台本</a>
+          </div>
+        </article>`).join('')}
+    </section>`).join('');
+}).catch(err => { document.getElementById('episodes').textContent = '読み込みに失敗しました: ' + err; });
+</script>
+</body>
+</html>
