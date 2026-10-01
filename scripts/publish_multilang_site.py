@@ -4,6 +4,7 @@ import argparse
 import email.utils
 import json
 import os
+import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -64,14 +65,48 @@ def build_vtt(lines: list[dict], hosts: dict) -> str:
     return "\n".join(cues)
 
 
-def timed_lines(utterances: list[dict], timeline: list | None) -> list[dict]:
+def utf16_index(text: str, index: int) -> int:
+    """Convert a Python code-point index to the UTF-16 index the browser uses for String.slice()."""
+    return len(text[:index].encode("utf-16-le")) // 2
+
+
+def word_ranges(text: str, words: list) -> list[list]:
+    """Locate each spoken word in the line: [start_s, end_s, from, to] with UTF-16 offsets.
+
+    Words are matched left to right; a word the TTS engine spelled differently is skipped
+    rather than highlighted in the wrong place.
+    """
+    folded = unicodedata.normalize("NFKC", text).casefold()
+    if len(folded) != len(text):
+        folded = text.casefold() if len(text.casefold()) == len(text) else text
+    ranges: list[list] = []
+    cursor = 0
+    for start, end, word in words:
+        token = unicodedata.normalize("NFKC", str(word)).strip().casefold()
+        if not token:
+            continue
+        found = folded.find(token, cursor)
+        if found < 0:
+            continue
+        cursor = found + len(token)
+        ranges.append([float(start), float(end), utf16_index(text, found), utf16_index(text, cursor)])
+    return ranges
+
+
+def timed_lines(utterances: list[dict], timeline: list | None, words: list | None = None) -> list[dict]:
     if timeline is not None and len(timeline) != len(utterances):
         raise ValueError(f"timeline has {len(timeline)} entries for {len(utterances)} utterances")
+    if words is not None and len(words) != len(utterances):
+        raise ValueError(f"word timings have {len(words)} entries for {len(utterances)} utterances")
     lines: list[dict] = []
     for index, utterance in enumerate(utterances):
         line = {key: utterance[key] for key in ("speaker", "language", "text", "ja", "slow") if key in utterance}
         if timeline is not None:
             line["start"], line["end"] = float(timeline[index][0]), float(timeline[index][1])
+        if words:
+            ranges = word_ranges(utterance["text"], words[index])
+            if ranges:
+                line["w"] = ranges
         lines.append(line)
     return lines
 
@@ -172,7 +207,7 @@ def main() -> int:
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
         media_item = media_by_slug[item["slug"]]
         audio_url = f"{release_base}/{media_item['audio']}"
-        lines = timed_lines(episode["utterances"], media_item.get("timeline"))
+        lines = timed_lines(episode["utterances"], media_item.get("timeline"), media_item.get("words"))
         detail = {
             "date": args.date,
             "slug": item["slug"],

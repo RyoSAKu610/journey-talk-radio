@@ -105,6 +105,9 @@ a.card:hover, a.card:focus-visible { border-color: var(--accent); }
 .line.t .txt { font-size: 1.07rem; }
 .line.n .txt { font-size: .9rem; color: var(--muted); }
 .slow { font-size: .72rem; margin-left: 6px; color: var(--muted); white-space: nowrap; }
+.w { border-radius: 4px; transition: background-color .08s, color .08s; }
+.w.on { background: var(--accent); color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+@media (prefers-color-scheme: dark) { .w.on { color: #0b1020; } }
 .hide-ja .ja { display: none; }
 .reveal { display: none; background: none; border: 0; cursor: pointer; padding: 8px; font-size: 1rem; }
 .blind .line.t:not(.revealed) .reveal { display: block; }

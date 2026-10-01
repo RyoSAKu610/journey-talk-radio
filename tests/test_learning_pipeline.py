@@ -248,7 +248,59 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(german.findall("./channel/item"), [])
 
 
+class KaraokeTests(unittest.TestCase):
+    def test_word_ranges_use_utf16_offsets_and_skip_unmatched_words(self):
+        ranges = publish.word_ranges("😀 ¿Has visto la Noticia?", [
+            [0.0, 0.3, "Has"], [0.3, 0.6, "visto"], [0.6, 0.7, "missing"], [0.7, 0.8, "la"], [0.8, 1.2, "noticia"],
+        ])
+        self.assertEqual(ranges, [[0.0, 0.3, 4, 7], [0.3, 0.6, 8, 13], [0.7, 0.8, 14, 16], [0.8, 1.2, 17, 24]])
+
+    def test_word_ranges_follow_order_for_repeated_words(self):
+        ranges = publish.word_ranges("我们我们", [[0, 1, "我们"], [1, 2, "我们"]])
+        self.assertEqual([r[2:] for r in ranges], [[0, 2], [2, 4]])
+
+    def test_lines_carry_word_ranges(self):
+        utterances = [{"speaker": "MC_F", "language": "es-ES", "text": "Hola amigos"}]
+        lines = publish.timed_lines(utterances, [[1.0, 2.0]], [[[1.0, 1.4, "Hola"], [1.5, 2.0, "amigos"]]])
+        self.assertEqual(lines[0]["w"], [[1.0, 1.4, 0, 4], [1.5, 2.0, 5, 11]])
+        with self.assertRaises(ValueError):
+            publish.timed_lines(utterances, [[1.0, 2.0]], [[], []])
+
+
 class RenderTimingTests(unittest.TestCase):
+    def test_word_boundaries_are_collected_and_offset_by_line_start(self):
+        try:
+            render = load_script("render_language_episodes")
+            from pydub import AudioSegment
+        except ImportError as exc:  # audio dependencies are installed in CI
+            self.skipTest(f"audio dependencies unavailable: {exc}")
+
+        class FakeCommunicate:
+            def __init__(self, text, voice, rate, boundary):
+                self.boundary = boundary
+
+            async def stream(self):
+                yield {"type": "audio", "data": b"ID3"}
+                yield {"type": "WordBoundary", "offset": 1_000_000, "duration": 4_000_000, "text": "Hola"}
+                yield {"type": "WordBoundary", "offset": 6_000_000, "duration": 3_000_000, "text": "amigos"}
+
+        import asyncio
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(render.edge_tts, "Communicate", FakeCommunicate):
+            words = asyncio.run(render.synthesize_one("Hola amigos", "voice", "+0%", Path(temporary) / "a.mp3"))
+            self.assertEqual(words, [[0.1, 0.5, "Hola"], [0.6, 0.9, "amigos"]])
+            paths = []
+            for index in range(2):
+                path = Path(temporary) / f"{index}.mp3"
+                AudioSegment.silent(duration=1000).export(path, format="mp3")
+                paths.append(path)
+            utterances = [{"language": "es-ES"}, {"language": "es-ES"}]
+            _, timeline, absolute = render.assemble(paths, utterances, BASE_CFG, [[], words])
+        second_start = timeline[1][0]
+        self.assertGreater(second_start, 1.0)
+        self.assertEqual(absolute[0], [])
+        self.assertAlmostEqual(absolute[1][0][0], round(second_start + 0.1, 2), places=2)
+
+
     def test_shadowing_pause_stays_below_qa_silence_limit(self):
         try:
             render = load_script("render_language_episodes")

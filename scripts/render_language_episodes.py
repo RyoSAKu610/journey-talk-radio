@@ -28,18 +28,35 @@ def voice_for(cfg: dict, language: str, speaker: str) -> str:
     raise ValueError(f"No voice for {language} / {speaker}")
 
 
-async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> list[Path]:
+async def synthesize_one(text: str, voice: str, rate: str, path: Path) -> list[list]:
+    """Write one utterance to MP3 and return its word timings as [start_s, end_s, word]."""
+    words: list[list] = []
+    communicate = edge_tts.Communicate(text, voice=voice, rate=rate, boundary="WordBoundary")
+    with path.open("wb") as handle:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                handle.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                # Edge TTS reports offsets in 100 ns ticks.
+                start, end = chunk["offset"], chunk["offset"] + chunk["duration"]
+                words.append([start / 10_000_000, end / 10_000_000, chunk["text"]])
+    return words
+
+
+async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> tuple[list[Path], list[list[list]]]:
     slow_rate = str(cfg.get("learning", {}).get("slow_rate", "-25%"))
     paths: list[Path] = []
+    word_timings: list[list[list]] = []
     for index, utterance in enumerate(utterances):
         voice = voice_for(cfg, utterance["language"], utterance["speaker"])
         rate = slow_rate if utterance.get("slow") else "+0%"
         path = work / f"{index:03d}.mp3"
-        await edge_tts.Communicate(utterance["text"], voice=voice, rate=rate).save(str(path))
+        words = await synthesize_one(utterance["text"], voice, rate, path)
         if not path.is_file() or path.stat().st_size == 0:
             raise RuntimeError(f"TTS failed at utterance {index}")
         paths.append(path)
-    return paths
+        word_timings.append(words)
+    return paths, word_timings
 
 
 def pause_after(utterance: dict, previous_language: str | None, segment_ms: int, cfg: dict) -> int:
@@ -52,19 +69,28 @@ def pause_after(utterance: dict, previous_language: str | None, segment_ms: int,
     return 650
 
 
-def assemble(paths: list[Path], utterances: list[dict], cfg: dict) -> tuple[AudioSegment, list[list[float]]]:
-    """Concatenate utterances and return the audio with each utterance's [start, end] in seconds."""
+def assemble(
+    paths: list[Path], utterances: list[dict], cfg: dict, word_timings: list[list[list]] | None = None
+) -> tuple[AudioSegment, list[list[float]], list[list[list]]]:
+    """Concatenate utterances.
+
+    Returns the audio, each utterance's [start, end] in seconds, and each utterance's words as
+    [start, end, word] in seconds from the beginning of the episode.
+    """
     audio = AudioSegment.empty()
     timeline: list[list[float]] = []
+    words: list[list[list]] = []
     previous_language = None
-    for path, utterance in zip(paths, utterances):
+    for index, (path, utterance) in enumerate(zip(paths, utterances)):
         segment = AudioSegment.from_file(path, format="mp3")
         start = len(audio)
         audio += segment
         timeline.append([round(start / 1000, 2), round(len(audio) / 1000, 2)])
+        local = word_timings[index] if word_timings else []
+        words.append([[round(start / 1000 + a, 2), round(start / 1000 + b, 2), text] for a, b, text in local])
         audio += AudioSegment.silent(duration=pause_after(utterance, previous_language, len(segment), cfg))
         previous_language = utterance["language"]
-    return audio, timeline
+    return audio, timeline, words
 
 
 def export_normalized(audio: AudioSegment, output: Path) -> None:
@@ -114,8 +140,8 @@ def main() -> int:
         slug = item["slug"]
         output = args.output_dir / f"journey-talk-{manifest['episode_date']}-{slug}.mp3"
         with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
-            paths = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
-            audio, timeline = assemble(paths, episode["utterances"], cfg)
+            paths, word_timings = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
+            audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
             export_normalized(audio, output)
         duration = probe_duration(output)
         if not minimum <= duration <= maximum:
@@ -130,6 +156,7 @@ def main() -> int:
                 "duration_seconds": round(duration, 3),
                 "bytes": output.stat().st_size,
                 "timeline": timeline,
+                "words": words,
             }
         )
         print(f"[audio] {slug}: {duration:.2f}s")

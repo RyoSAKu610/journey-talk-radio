@@ -260,6 +260,20 @@ async function renderEpisode(date, slug) {
   teardown = setupPlayer(ep, lines, timed, key, progress);
 }
 
+// Wrap each spoken word in a span so it can light up while it is being said (karaoke view).
+function karaoke(line) {
+  const ranges = Array.isArray(line.w) ? line.w : [];
+  if (!ranges.length) return esc(line.text);
+  let html = '';
+  let cursor = 0;
+  ranges.forEach(([, , from, to], k) => {
+    if (from < cursor || to > line.text.length) return;
+    html += esc(line.text.slice(cursor, from)) + `<span class="w" data-k="${k}">${esc(line.text.slice(from, to))}</span>`;
+    cursor = to;
+  });
+  return html + esc(line.text.slice(cursor));
+}
+
 function scriptLine(line, i, targetLanguage, hosts) {
   const target = line.language === targetLanguage;
   const who = line.speaker === 'MC_F' ? 'f' : 'm';
@@ -267,7 +281,7 @@ function scriptLine(line, i, targetLanguage, hosts) {
     <li class="line ${target ? 't' : 'n'}" data-i="${i}">
       <button class="line-main" type="button">
         <span class="who ${who}">${esc(hosts[line.speaker] || line.speaker)}</span>
-        <span class="txt" lang="${esc(line.language)}">${esc(line.text)}${line.slow ? '<span class="slow">🐢 ゆっくり</span>' : ''}</span>
+        <span class="txt" lang="${esc(line.language)}">${karaoke(line)}${line.slow ? '<span class="slow">🐢 ゆっくり</span>' : ''}</span>
         ${line.ja ? `<span class="ja" lang="ja">${esc(line.ja)}</span>` : ''}
       </button>
       ${target ? '<button class="reveal" type="button" aria-label="この文を表示">👁</button>' : ''}
@@ -448,6 +462,19 @@ function setupPlayer(ep, lines, timed, key, progress) {
       }
     }
   };
+  let litWord = null;
+  const setWord = (t) => {
+    let next = null;
+    const ranges = active >= 0 && Array.isArray(lines[active].w) ? lines[active].w : [];
+    for (let k = 0; k < ranges.length; k += 1) {
+      if (ranges[k][0] > t) break;
+      if (t < ranges[k][1] + 0.08) { next = rows[active].querySelector(`.w[data-k="${k}"]`); break; }
+    }
+    if (next === litWord) return;
+    if (litWord) litWord.classList.remove('on');
+    if (next) next.classList.add('on');
+    litWord = next;
+  };
   const tick = () => {
     const t = audio.currentTime;
     if (!seeking) seek.value = String(Math.round((t / duration()) * 1000));
@@ -455,6 +482,7 @@ function setupPlayer(ep, lines, timed, key, progress) {
     if (timed) {
       if (loopIndex >= 0 && t >= lines[loopIndex].end + 0.15) audio.currentTime = lines[loopIndex].start;
       setActive(lineAt(audio.currentTime));
+      setWord(audio.currentTime);
     }
     if (!audio.paused) {
       buckets.add(Math.floor(t / BUCKET_SECONDS));
