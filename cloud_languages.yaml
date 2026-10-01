@@ -21,6 +21,11 @@ learning:
   slow_rate: "-25%"
   shadowing_pause_ms: [1200, 2000]
 
+weekly_review:
+  # Built on Sundays (Japan time) by daily-multilang.yml, or on demand with its weekly_review input.
+  lookback_days: 7
+  max_expressions: 30
+
 hosts:
   MC_F: "ミナ"
   MC_M: "レン"

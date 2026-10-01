@@ -21,7 +21,9 @@ const fmt = (sec) => {
 };
 const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return localDay(d); };
-const langLabel = (ep) => `${FLAGS[ep.slug] || '🌐'} ${esc(ep.japanese_name)}`;
+// Weekend review editions use slugs like "es-weekly"; the language is the part before the dash.
+const baseSlug = (slug) => String(slug || '').split('-')[0];
+const langLabel = (ep) => `${FLAGS[baseSlug(ep.slug)] || '🌐'} ${esc(ep.japanese_name)}`;
 
 /* ---------- persistent learner state (per browser) ---------- */
 const store = (() => {
@@ -118,9 +120,9 @@ function statsRow() {
 async function renderHome() {
   const days = await loadHistory();
   const langs = new Map();
-  days.forEach((day) => day.episodes.forEach((ep) => langs.set(ep.slug, ep)));
+  days.forEach((day) => day.episodes.forEach((ep) => { if (!langs.has(baseSlug(ep.slug))) langs.set(baseSlug(ep.slug), ep); }));
   const selected = langs.has(store.state.lang) ? store.state.lang : 'all';
-  const chips = [['all', 'すべて'], ...[...langs.values()].map((ep) => [ep.slug, langLabel(ep)])]
+  const chips = [['all', 'すべて'], ...[...langs.entries()].map(([slug, ep]) => [slug, langLabel(ep)])]
     .map(([slug, label]) => `<button class="chip" data-lang="${esc(slug)}" aria-pressed="${slug === selected}">${label}</button>`)
     .join('');
   const feed = selected === 'all'
@@ -128,7 +130,7 @@ async function renderHome() {
     : `<a href="feeds/${esc(selected)}.xml">この言語だけをPodcastアプリで購読（RSS）</a>`;
 
   const sections = days.map((day) => {
-    const eps = day.episodes.filter((ep) => selected === 'all' || ep.slug === selected);
+    const eps = day.episodes.filter((ep) => selected === 'all' || baseSlug(ep.slug) === selected);
     if (!eps.length) return '';
     return `<section class="day"><h2>${esc(day.date)}</h2><div class="cards">${eps.map((ep) => episodeCard(day, ep)).join('')}</div></section>`;
   }).join('');
@@ -162,6 +164,7 @@ function episodeCard(day, ep) {
   const key = `${day.date}/${ep.slug}`;
   const p = store.state.progress[key];
   const badges = [];
+  if (ep.kind === 'weekly') badges.push('<span class="tag badge-weekly">🗓 週末まとめ</span>');
   if (p && p.done) badges.push('<span class="tag badge-done">✓ 聴了</span>');
   if (p && p.quiz) badges.push(`<span class="tag">クイズ ${p.quiz.best}/${p.quiz.total}</span>`);
   (ep.highlights || []).slice(0, 3).forEach((h) => badges.push(`<span class="tag">${esc(String(h).split(' — ')[0])}</span>`));
@@ -235,7 +238,7 @@ async function renderEpisode(date, slug) {
     <section data-panel="vocab" hidden>${vocabPanel(ep, vocab)}</section>
     <section data-panel="quiz" hidden><div class="quiz" id="quiz"></div></section>
     <section data-panel="news" hidden>
-      <ul class="stories">${(ep.stories || []).map((s) => `<li><span class="tag">${esc(s.source)}</span> <a href="${esc(httpUrl(s.url))}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a></li>`).join('')}</ul>
+      <ul class="stories">${(ep.stories || []).map((s) => `<li><span class="tag">${esc(s.source)}</span> ${httpUrl(s.url) === '#' ? esc(s.title) : `<a href="${esc(httpUrl(s.url))}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`}</li>`).join('')}</ul>
       <p class="muted" style="font-size:.85rem">番組はこれらの見出しと要約をもとに会話しています。原文を読むと、さらに語彙が広がります。</p>
     </section>
     <div class="player" role="region" aria-label="プレーヤー">
@@ -320,7 +323,7 @@ function setupPrefs() {
 }
 
 /* ---------- vocabulary ---------- */
-const wordId = (ep, item) => `${ep.slug}|${item.term}`;
+const wordId = (ep, item) => `${baseSlug(ep.slug)}|${item.term}`;
 
 function vocabPanel(ep, vocab) {
   if (!vocab.length) return '<div class="empty">この回の単語リストはありません。</div>';
@@ -344,7 +347,7 @@ function addWord(ep, item) {
   store.state.words[id] = {
     term: item.term, reading: item.reading || '', meaning_ja: item.meaning_ja,
     example: item.example || '', example_ja: item.example_ja || '',
-    slug: ep.slug, language: ep.language, japanese_name: ep.japanese_name,
+    slug: baseSlug(ep.slug), language: ep.language, japanese_name: ep.japanese_name,
     source: `${ep.date}/${ep.slug}`, box: 0, due: localDay(),
   };
   return true;

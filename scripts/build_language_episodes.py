@@ -162,18 +162,53 @@ Candidates:
         return news[:required]
 
 
+def retry_note(feedback: str) -> str:
+    if not feedback:
+        return ""
+    return f"""
+
+The previous attempt was rejected by the validator: {feedback}
+Write a corrected, complete episode that satisfies every requirement."""
+
+
+def materials_contract(lang: dict, cfg: dict) -> str:
+    """Prompt section shared by every edition type: on-screen study materials and the JSON shape."""
+    learning = cfg["learning"]
+    return f"""Learning materials for the companion web player (these are shown on screen, not spoken):
+- Every {lang['code']} utterance must include "ja": a natural Japanese translation of that utterance. Japanese utterances have no "ja".
+- "summary_ja": two or three Japanese sentences telling the listener what this episode covers and what they will be able to say.
+- "vocabulary": {learning['vocabulary_min']} to {learning['vocabulary_max']} useful words or phrases that actually appear in the {lang['code']} utterances.
+  Each item has "term", "reading" (pronunciation help for a Japanese learner: pinyin with tone marks for Chinese,
+  Revised Romanization for Korean, the word with a stress mark for Russian, otherwise an empty string), "meaning_ja",
+  "example" (a {lang['code']} sentence from the episode that contains the term) and "example_ja".
+- "quiz": {learning['quiz_min']} to {learning['quiz_max']} listening-comprehension questions written in Japanese about what the hosts said.
+  Each item has "question_ja", "choices" (three or four short Japanese options), "answer" (zero-based index of the correct
+  choice) and "explanation_ja".
+
+Return JSON only:
+{{
+  "title": "short Japanese title",
+  "summary_ja": "...",
+  "utterances": [
+    {{"speaker":"MC_F","language":"ja-JP","text":"..."}},
+    {{"speaker":"MC_M","language":"{lang['code']}","text":"...","ja":"..."}},
+    {{"speaker":"MC_F","language":"{lang['code']}","text":"...","ja":"...","slow":true}}
+  ],
+  "vocabulary": [
+    {{"term":"...","reading":"...","meaning_ja":"...","example":"...","example_ja":"..."}}
+  ],
+  "quiz": [
+    {{"question_ja":"...","choices":["...","...","..."],"answer":0,"explanation_ja":"..."}}
+  ]
+}}""".strip()
+
+
 def episode_prompt(date: str, lang: dict, stories: list[dict], cfg: dict, feedback: str = "") -> str:
     minimum = cfg["episode"]["minimum_seconds"] // 60
     maximum = cfg["episode"]["maximum_seconds"] // 60
     level = cfg["episode"].get("learner_level", "CEFR B1")
     hosts = cfg.get("hosts", {})
     learning = cfg["learning"]
-    retry_note = ""
-    if feedback:
-        retry_note = f"""
-
-The previous attempt was rejected by the validator: {feedback}
-Write a corrected, complete episode that satisfies every requirement."""
     return f"""
 Write the {lang['japanese_name']} edition of Journey Talk for {date}.
 
@@ -200,36 +235,10 @@ Hard requirements:
 - Avoid stiff textbook dialogue. Prefer natural modern spoken language without slang that is too niche.
 - Political or policy content, if present, must remain descriptive and neutral. No endorsements, rankings or persuasion.
 
-Learning materials for the companion web player (these are shown on screen, not spoken):
-- Every {lang['code']} utterance must include "ja": a natural Japanese translation of that utterance. Japanese utterances have no "ja".
-- "summary_ja": two or three Japanese sentences telling the listener what this episode covers and what they will be able to say.
-- "vocabulary": {learning['vocabulary_min']} to {learning['vocabulary_max']} useful words or phrases that actually appear in the {lang['code']} utterances.
-  Each item has "term", "reading" (pronunciation help for a Japanese learner: pinyin with tone marks for Chinese,
-  Revised Romanization for Korean, the word with a stress mark for Russian, otherwise an empty string), "meaning_ja",
-  "example" (a {lang['code']} sentence from the episode that contains the term) and "example_ja".
-- "quiz": {learning['quiz_min']} to {learning['quiz_max']} listening-comprehension questions written in Japanese about what the hosts said.
-  Each item has "question_ja", "choices" (three or four short Japanese options), "answer" (zero-based index of the correct
-  choice) and "explanation_ja".
-
-Return JSON only:
-{{
-  "title": "short Japanese title",
-  "summary_ja": "...",
-  "utterances": [
-    {{"speaker":"MC_F","language":"ja-JP","text":"..."}},
-    {{"speaker":"MC_M","language":"{lang['code']}","text":"...","ja":"..."}},
-    {{"speaker":"MC_F","language":"{lang['code']}","text":"...","ja":"...","slow":true}}
-  ],
-  "vocabulary": [
-    {{"term":"...","reading":"...","meaning_ja":"...","example":"...","example_ja":"..."}}
-  ],
-  "quiz": [
-    {{"question_ja":"...","choices":["...","...","..."],"answer":0,"explanation_ja":"..."}}
-  ]
-}}
+{materials_contract(lang, cfg)}
 
 Stories:
-{json.dumps(stories, ensure_ascii=False)}{retry_note}
+{json.dumps(stories, ensure_ascii=False)}{retry_note(feedback)}
 """.strip()
 
 
@@ -408,7 +417,7 @@ def validate_learning(data: dict, episode: dict, cfg: dict) -> dict:
     }
 
 
-def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict) -> dict:
+def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prompt_builder=None) -> dict:
     """Ask Gemini for one edition, feeding validator errors back into the retry prompt.
 
     A spoken script that passes every audio contract is never thrown away just because the
@@ -419,7 +428,7 @@ def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict) -> d
     spoken_only: dict | None = None
     for attempt in range(1, attempts + 1):
         try:
-            raw = gemini_json(episode_prompt(date, lang, stories, cfg, feedback), cfg)
+            raw = gemini_json((prompt_builder or episode_prompt)(date, lang, stories, cfg, feedback), cfg)
             episode = validate_episode(raw, date, lang, stories, cfg)
         except ValueError as exc:
             feedback = str(exc)

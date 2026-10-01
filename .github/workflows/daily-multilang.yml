@@ -7,6 +7,7 @@ on:
       - ".github/workflows/daily-multilang.yml"
       - "cloud_languages.yaml"
       - "scripts/build_language_episodes.py"
+      - "scripts/build_weekly_review.py"
       - "scripts/render_language_episodes.py"
       - "scripts/qa_language_episodes.py"
       - "scripts/publish_multilang_site.py"
@@ -16,6 +17,11 @@ on:
   schedule:
     - cron: "0 22 * * *"
   workflow_dispatch:
+    inputs:
+      weekly_review:
+        description: "Also build the weekend review editions today"
+        type: boolean
+        default: false
 
 concurrency:
   group: journey-talk-cloud-daily
@@ -69,7 +75,7 @@ jobs:
             exit 1
           fi
           python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
-          python -m py_compile scripts/build_language_episodes.py scripts/render_language_episodes.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
+          python -m py_compile scripts/build_language_episodes.py scripts/build_weekly_review.py scripts/render_language_episodes.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
           python - <<'PY'
           import yaml
           cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))
@@ -81,14 +87,22 @@ jobs:
 
       - name: Resolve Japan date
         id: day
-        run: echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
+          echo "weekday=$(TZ=Asia/Tokyo date +%u)" >> "$GITHUB_OUTPUT"
 
       - name: Generate five language editions
         run: |
           DATE="${{ steps.day.outputs.date }}"
           python scripts/build_language_episodes.py --date "$DATE"
 
-      - name: Render five MP3 files
+      - name: Weekend review editions
+        if: steps.day.outputs.weekday == '7' || github.event.inputs.weekly_review == 'true'
+        run: |
+          DATE="${{ steps.day.outputs.date }}"
+          python scripts/build_weekly_review.py --date "$DATE" --docs-dir docs
+
+      - name: Render MP3 files
         run: |
           DATE="${{ steps.day.outputs.date }}"
           python scripts/render_language_episodes.py \

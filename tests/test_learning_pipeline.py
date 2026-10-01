@@ -248,6 +248,81 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(german.findall("./channel/item"), [])
 
 
+class WeeklyReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.weekly = load_script("build_weekly_review")
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.docs, self.output = root / "docs", root / "output"
+        for day, terms in (("2026-09-26", ["viejo"]), ("2026-09-28", ["viajar", "tren"]), ("2026-10-01", ["Tren", "sin prisa"])):
+            path = self.docs / "episodes" / day / "es.json"
+            path.parent.mkdir(parents=True)
+            vocab = [{"term": t, "reading": "", "meaning_ja": f"意味{t}", "example": "", "example_ja": ""} for t in terms]
+            path.write_text(json.dumps({"title": f"回{day}", "vocabulary": vocab}, ensure_ascii=False), encoding="utf-8")
+        today = self.output / "2026-10-04"
+        today.mkdir(parents=True)
+        (today / "es.json").write_text(json.dumps({"title": "今日", "vocabulary": [
+            {"term": "vale la pena", "meaning_ja": "価値がある"}, {"term": "de moda", "meaning_ja": "流行の"},
+            {"term": "Viajar", "meaning_ja": "dup"},
+        ]}, ensure_ascii=False), encoding="utf-8")
+        (today / "manifest.json").write_text(json.dumps({"episode_date": "2026-10-04", "stories": [], "episodes": [
+            {"slug": "es", "language": "es-ES", "japanese_name": "スペイン語", "json": "es.json", "markdown": "es.md"}]}), encoding="utf-8")
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_week_material_spans_lookback_and_dedupes(self):
+        episodes, vocab = self.weekly.week_material("2026-10-04", "es", self.docs, self.output, 7)
+        self.assertEqual([x["date"] for x in episodes], ["2026-09-28", "2026-10-01", "2026-10-04"])
+        self.assertEqual([x["term"] for x in vocab], ["viajar", "tren", "sin prisa", "vale la pena", "de moda"])
+
+    def run_weekly(self, cfg, fake):
+        argv = ["weekly", "--date", "2026-10-04", "--output-dir", str(self.output), "--docs-dir", str(self.docs)]
+        with mock.patch.object(self.weekly.daily, "load_config", return_value=cfg), \
+                mock.patch.object(self.weekly.daily, "gemini_json", side_effect=fake), \
+                mock.patch.object(sys, "argv", argv):
+            self.assertEqual(self.weekly.main(), 0)
+        return json.loads((self.output / "2026-10-04" / "manifest.json").read_text(encoding="utf-8"))
+
+    def test_review_edition_is_appended_with_weekly_slug(self):
+        cfg = test_cfg()
+        cfg["languages"] = [LANG]
+        prompts = []
+
+        def fake(prompt, _cfg):
+            prompts.append(prompt)
+            return raw_episode()
+
+        manifest = self.run_weekly(cfg, fake)
+        self.assertEqual([x["slug"] for x in manifest["episodes"]], ["es", "es-weekly"])
+        self.assertIn("weekend review edition", prompts[0])
+        self.assertIn("sin prisa", prompts[0])
+        self.assertNotIn("viejo", prompts[0], "expressions older than the lookback window must be left out")
+        episode = json.loads((self.output / "2026-10-04" / "es-weekly.json").read_text(encoding="utf-8"))
+        self.assertEqual(episode["kind"], "weekly")
+        self.assertTrue(episode["title"].startswith("週末まとめ"))
+        # Re-running the step is a no-op.
+        manifest = self.run_weekly(cfg, fake)
+        self.assertEqual(len(prompts), 1)
+        self.assertEqual(len(manifest["episodes"]), 2)
+
+    def test_failures_and_thin_weeks_never_fail_the_run(self):
+        cfg = test_cfg()
+        cfg["languages"] = [LANG, next(x for x in BASE_CFG["languages"] if x["slug"] == "de")]
+        manifest = self.run_weekly(cfg, lambda prompt, _cfg: {"utterances": []})
+        self.assertEqual([x["slug"] for x in manifest["episodes"]], ["es"])
+        self.assertEqual([x["slug"] for x in manifest["failed"]], ["es-weekly"])
+
+    def test_language_feed_includes_weekly_edition(self):
+        history = [{"date": "2026-10-04", "episodes": [
+            {"slug": slug, "kind": kind, "language": "es-ES", "japanese_name": "スペイン語", "title": slug,
+             "audio_url": "https://example.test/a.mp3", "bytes": 1, "duration_seconds": 700}
+            for slug, kind in (("es", "daily"), ("es-weekly", "weekly"), ("de", "daily"))]}]
+        items = publish.build_feed(history, "https://example.test", slug="es").getroot().findall("./channel/item")
+        self.assertEqual([x.findtext("guid") for x in items], ["journey-talk:2026-10-04:es", "journey-talk:2026-10-04:es-weekly"])
+        self.assertIn("07:05:00", items[1].findtext("pubDate"))
+
+
 class KaraokeTests(unittest.TestCase):
     def test_word_ranges_use_utf16_offsets_and_skip_unmatched_words(self):
         ranges = publish.word_ranges("😀 ¿Has visto la Noticia?", [

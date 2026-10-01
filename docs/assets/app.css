@@ -80,6 +80,7 @@ a.card:hover, a.card:focus-visible { border-color: var(--accent); }
 .card .summary { margin: 0 0 8px; color: var(--muted); font-size: .9rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .badge-done { background: var(--ok-soft); color: var(--ok); }
+.badge-weekly { background: var(--accent-soft); color: var(--accent); }
 .card audio { width: 100%; margin: 6px 0; }
 
 .back { display: inline-block; margin-bottom: 8px; text-decoration: none; }

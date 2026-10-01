@@ -145,7 +145,7 @@ def build_feed(
 
     for day in history:
         for episode in day["episodes"]:
-            if slug and episode["slug"] != slug:
+            if slug and base_slug(episode["slug"]) != slug:
                 continue
             page_url = f"{base_url}/#/{day['date']}/{episode['slug']}"
             item = ET.SubElement(channel, "item")
@@ -153,7 +153,9 @@ def build_feed(
             text_node(item, "description", show_notes(episode, page_url))
             text_node(item, "link", page_url)
             text_node(item, "guid", f"journey-talk:{day['date']}:{episode['slug']}", isPermaLink="false")
-            local_time = datetime.fromisoformat(f"{day['date']}T07:00:00").replace(tzinfo=ZoneInfo("Asia/Tokyo"))
+            # The weekend review goes out a few minutes later so podcast apps list it above that day's edition.
+            clock = "07:05:00" if episode.get("kind") == "weekly" else "07:00:00"
+            local_time = datetime.fromisoformat(f"{day['date']}T{clock}").replace(tzinfo=ZoneInfo("Asia/Tokyo"))
             text_node(item, "pubDate", email.utils.format_datetime(local_time))
             ET.SubElement(
                 item,
@@ -169,6 +171,11 @@ def build_feed(
                     {"url": f"{base_url}/{episode['transcript_url']}", "type": "text/vtt", "language": episode["language"][:2]},
                 )
     return ET.ElementTree(rss)
+
+
+def base_slug(slug: str) -> str:
+    """Language slug of an edition: "es" for both "es" and the weekend review "es-weekly"."""
+    return slug.split("-", 1)[0]
 
 
 def write_feed(tree: ET.ElementTree, path: Path) -> None:
@@ -211,6 +218,7 @@ def main() -> int:
         detail = {
             "date": args.date,
             "slug": item["slug"],
+            "kind": episode.get("kind", "daily"),
             "language": item["language"],
             "japanese_name": item["japanese_name"],
             "title": episode["title"],
@@ -227,6 +235,7 @@ def main() -> int:
         detail_path.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
         entry = {
             "slug": item["slug"],
+            "kind": episode.get("kind", "daily"),
             "language": item["language"],
             "japanese_name": item["japanese_name"],
             "title": episode["title"],
