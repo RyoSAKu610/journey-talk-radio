@@ -30,6 +30,22 @@ hosts:
   MC_F: "ミナ"
   MC_M: "レン"
 
+tts:
+  # gemini: one multilingual Gemini voice per host (needs GEMINI_API_KEY). edge: Microsoft Edge voices.
+  provider: gemini
+  # If Gemini TTS fails for an episode, render that whole episode with Edge TTS instead of skipping it.
+  fallback: edge
+  gemini:
+    # Tried in order until one is accepted; override with the GEMINI_TTS_MODEL repository variable.
+    models: ["gemini-3.8-flash-tts", "gemini-2.5-flash-preview-tts"]
+    voices:
+      MC_F: "Aoede"
+      MC_M: "Puck"
+    normal_direction: "Speak in {language} as a warm, relaxed radio host chatting naturally with a co-host"
+    slow_direction: "Speak in {language} slowly and very clearly, with a small pause between words, so a learner can repeat after you"
+    max_attempts: 6
+    min_interval_seconds: 0
+
 qa:
   max_silence_seconds: 3.0
   whisper_model: "base"

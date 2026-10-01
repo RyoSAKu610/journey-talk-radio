@@ -3,13 +3,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import edge_tts
 import yaml
 from pydub import AudioSegment
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gemini_tts import GeminiTTS, GeminiTTSError, estimate_word_timings  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
@@ -59,6 +64,21 @@ async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> tuple[lis
     return paths, word_timings
 
 
+def synthesize_gemini(tts: GeminiTTS, utterances: list[dict], work: Path) -> tuple[list[Path], list[list[list]]]:
+    """One Gemini request per utterance; word timings are estimated within each line."""
+    paths: list[Path] = []
+    word_timings: list[list[list]] = []
+    for index, utterance in enumerate(utterances):
+        audio = tts.synthesize(utterance["text"], utterance["speaker"], utterance["language"], bool(utterance.get("slow")))
+        if len(audio) < 150:
+            raise GeminiTTSError(f"utterance {index} produced only {len(audio)} ms of audio")
+        path = work / f"{index:03d}.wav"
+        audio.export(path, format="wav")
+        paths.append(path)
+        word_timings.append(estimate_word_timings(utterance["text"], len(audio) / 1000))
+    return paths, word_timings
+
+
 def pause_after(utterance: dict, previous_language: str | None, segment_ms: int, cfg: dict) -> int:
     if utterance.get("slow"):
         # Leave room for the listener to repeat (shadow) the slow line. Kept below the QA silence limit.
@@ -82,7 +102,7 @@ def assemble(
     words: list[list[list]] = []
     previous_language = None
     for index, (path, utterance) in enumerate(zip(paths, utterances)):
-        segment = AudioSegment.from_file(path, format="mp3")
+        segment = AudioSegment.from_file(path, format=path.suffix.lstrip(".") or "mp3")
         start = len(audio)
         audio += segment
         timeline.append([round(start / 1000, 2), round(len(audio) / 1000, 2)])
@@ -133,6 +153,22 @@ def probe_duration(path: Path) -> float:
     return float(result.stdout.strip())
 
 
+def render_audio(cfg: dict, utterances: list[dict], work: Path, gemini: GeminiTTS | None) -> tuple[list[Path], list, str]:
+    """Synthesise every line with one engine, so a single episode never mixes voices."""
+    if gemini is not None:
+        try:
+            paths, words = synthesize_gemini(gemini, utterances, work)
+            return paths, words, f"gemini:{gemini.model_in_use}"
+        except GeminiTTSError as exc:
+            if cfg["tts"].get("fallback") != "edge":
+                raise
+            print(f"::warning::Gemini TTS failed ({exc}); rendering this episode with Edge TTS instead")
+            for leftover in work.iterdir():
+                leftover.unlink()
+    paths, words = asyncio.run(synthesize(cfg, utterances, work))
+    return paths, words, "edge"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episode-dir", type=Path, required=True)
@@ -142,22 +178,38 @@ def main() -> int:
     cfg = load_config()
     manifest = json.loads((args.episode_dir / "manifest.json").read_text(encoding="utf-8"))
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    media = {"episode_date": manifest["episode_date"], "episodes": []}
+    media = {"episode_date": manifest["episode_date"], "episodes": [], "failed": []}
     minimum = float(cfg["episode"]["minimum_seconds"])
     maximum = float(cfg["episode"]["maximum_seconds"])
+
+    provider = os.getenv("TTS_PROVIDER", "").strip() or cfg["tts"]["provider"]
+    gemini = None
+    if provider == "gemini":
+        try:
+            gemini = GeminiTTS(cfg)
+        except GeminiTTSError as exc:
+            print(f"::warning::Gemini TTS unavailable ({exc}); using Edge TTS")
 
     for item in manifest["episodes"]:
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
         slug = item["slug"]
         output = args.output_dir / f"journey-talk-{manifest['episode_date']}-{slug}.mp3"
-        with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
-            paths, word_timings = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
-            audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
-            offline = output.with_name(offline_name(output.name))
-            export_normalized(audio, output, offline)
-        duration = probe_duration(output)
-        if not minimum <= duration <= maximum:
-            raise RuntimeError(f"{slug} duration {duration:.2f}s outside {minimum:.0f}..{maximum:.0f}s")
+        try:
+            with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
+                paths, word_timings, engine = render_audio(cfg, episode["utterances"], Path(temp), gemini)
+                audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
+                offline = output.with_name(offline_name(output.name))
+                export_normalized(audio, output, offline)
+            duration = probe_duration(output)
+            if not minimum <= duration <= maximum:
+                raise RuntimeError(f"duration {duration:.2f}s outside {minimum:.0f}..{maximum:.0f}s")
+        except Exception as exc:
+            # One language's audio failing must not cost the other languages their episode.
+            print(f"::warning::{slug} audio skipped: {exc}")
+            media["failed"].append({"slug": slug, "error": str(exc)[:500]})
+            for path in (output, output.with_name(offline_name(output.name))):
+                path.unlink(missing_ok=True)
+            continue
         media["episodes"].append(
             {
                 "slug": slug,
@@ -169,15 +221,20 @@ def main() -> int:
                 "bytes": output.stat().st_size,
                 "offline_audio": offline.name,
                 "offline_bytes": offline.stat().st_size,
+                "tts": engine,
+                "words_estimated": engine.startswith("gemini"),
                 "timeline": timeline,
                 "words": words,
             }
         )
-        print(f"[audio] {slug}: {duration:.2f}s")
+        print(f"[audio] {slug}: {duration:.2f}s via {engine}")
 
     (args.output_dir / "media-manifest.json").write_text(
         json.dumps(media, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    if not media["episodes"]:
+        print("[error] no episode could be rendered")
+        return 1
     return 0
 
 

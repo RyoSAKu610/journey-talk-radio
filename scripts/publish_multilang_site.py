@@ -217,6 +217,8 @@ def main() -> int:
 
     episodes: list[dict] = []
     for item in manifest["episodes"]:
+        if item["slug"] not in media_by_slug:  # no audio was rendered for this edition
+            continue
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
         media_item = media_by_slug[item["slug"]]
         audio_url = f"{release_base}/{media_item['audio']}"

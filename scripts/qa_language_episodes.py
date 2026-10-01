@@ -78,6 +78,8 @@ def main() -> int:
 
     for item in manifest["episodes"]:
         slug = item["slug"]
+        if slug not in by_slug:  # audio rendering skipped this edition
+            continue
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
         media_item = by_slug[slug]
         audio = args.media_dir / media_item["audio"]

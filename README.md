@@ -238,7 +238,7 @@ SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要で�
 ```text
 RSS 3媒体 → Geminiが共通の3記事を選択
   → 言語ごとに台本＋学習教材をGeminiで生成（検証エラーを返して最大3回再試行）
-  → Edge TTSで音声化（復習パートは🐢ゆっくり再生＋シャドーイング用の間）
+  → Gemini TTSで音声化（失敗時はEdge TTS。復習パートは🐢ゆっくり再生＋シャドーイング用の間）
   → 全デコード・無音検査・Whisper照合
   → GitHub Release（MP3・台本）＋ GitHub Pages（学習プレーヤー・RSS）
 ```
@@ -246,6 +246,16 @@ RSS 3媒体 → Geminiが共通の3記事を選択
 ### 必要な設定
 
 Repository secret に `GEMINI_API_KEY`（[Google AI Studio](https://aistudio.google.com/apikey) で発行）を登録してください。未設定の場合、ワークフローは最初の検査で停止し、Job Summaryに設定手順を表示します。任意で Repository variable `GEMINI_MODEL` によりモデルを上書きできます（既定は `cloud_languages.yaml` の `gemini-2.5-flash`）。
+
+### 音声合成（TTS）
+
+既定は **Gemini TTS** です（`cloud_languages.yaml` の `tts`）。
+
+- 各ホストが日本語と学習言語の両方を1つの声で話します（既定: ミナ=`Aoede`、レン=`Puck`）。言語とペースは読み上げ指示（`normal_direction` / `slow_direction`）で伝えます。
+- モデルは `gemini-3.8-flash-tts` → `gemini-2.5-flash-preview-tts` の順に試し、使えたものを使い続けます。Repository variable `GEMINI_TTS_MODEL` で上書きできます。APIキーは台本生成と同じ `GEMINI_API_KEY` です。
+- 発話ごとに1リクエストで合成し、各行の開始・終了時刻は正確に保ちます。Geminiは単語ごとのタイミングを返さないため、カラオケ表示の単語位置は行内で文字量に比例して推定します。
+- 429や5xxはサーバー指定の待ち時間（`retryDelay`）に従って再試行します。キーが拒否された場合や上限に達した場合は、その回を丸ごと **Edge TTS** で作り直します（1つの回で声が混ざることはありません）。Repository variable `TTS_PROVIDER=edge` にすれば常にEdge TTSを使います。
+- 音声の生成に失敗した言語はスキップし、ほかの言語は公開します。
 
 ### 学習体験
 

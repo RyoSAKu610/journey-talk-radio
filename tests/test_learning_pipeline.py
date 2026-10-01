@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import importlib.util
 import json
@@ -176,6 +177,27 @@ class GenerationRetryTests(unittest.TestCase):
 
 
 class PublishTests(unittest.TestCase):
+    def test_editions_without_audio_are_not_published(self):
+        cfg = test_cfg()
+        raw = raw_episode()
+        episode = build.validate_episode(raw, DATE, LANG, STORIES, cfg)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "out").mkdir()
+            (root / "media").mkdir()
+            for slug in ("es", "de"):
+                (root / "out" / f"{slug}.json").write_text(json.dumps(episode, ensure_ascii=False), encoding="utf-8")
+            (root / "out" / "manifest.json").write_text(json.dumps({"episode_date": DATE, "stories": [], "episodes": [
+                {"slug": slug, "language": "es-ES", "japanese_name": "x", "json": f"{slug}.json", "markdown": f"{slug}.md"}
+                for slug in ("es", "de")]}), encoding="utf-8")
+            (root / "media" / "media-manifest.json").write_text(json.dumps({"episodes": [
+                {"slug": "es", "audio": "a.mp3", "duration_seconds": 700, "bytes": 1}], "failed": [{"slug": "de", "error": "tts"}]}), encoding="utf-8")
+            argv = ["publish", "--date", DATE, "--episode-dir", str(root / "out"), "--media-dir", str(root / "media"), "--docs-dir", str(root / "docs")]
+            with mock.patch.object(sys, "argv", argv):
+                self.assertEqual(publish.main(), 0)
+            history = json.loads((root / "docs" / "episodes.json").read_text(encoding="utf-8"))
+        self.assertEqual([x["slug"] for x in history[0]["episodes"]], ["es"])
+
     def test_vtt_timestamps_and_escaping(self):
         lines = [{"speaker": "MC_F", "language": "es-ES", "text": "A <b> & B", "start": 0.0, "end": 3725.5}]
         vtt = publish.build_vtt(lines, {"MC_F": "ミナ"})
@@ -354,6 +376,116 @@ class OfflineAndArtworkTests(unittest.TestCase):
             self.assertTrue(master.is_file() and offline.is_file())
             self.assertLess(offline.stat().st_size, master.stat().st_size)
             self.assertAlmostEqual(render.probe_duration(master), render.probe_duration(offline), delta=0.1)
+
+
+class GeminiTTSTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            sys.path.insert(0, str(PROJECT_DIR / "scripts"))
+            self.tts_module = load_script("gemini_tts")
+            from pydub import AudioSegment
+            from pydub.generators import Sine
+        except ImportError as exc:  # audio dependencies are installed in CI
+            self.skipTest(f"audio dependencies unavailable: {exc}")
+        self.AudioSegment = AudioSegment
+        tone = Sine(440).to_audio_segment(duration=800).set_frame_rate(24000).set_channels(1).set_sample_width(2)
+        padded = AudioSegment.silent(duration=400, frame_rate=24000) + tone + AudioSegment.silent(duration=500, frame_rate=24000)
+        self.pcm = base64.b64encode(padded.raw_data).decode()
+        self.sleeps = []
+
+    class Response:
+        def __init__(self, status, body=None, text="", headers=None):
+            self.status_code, self._body, self.text, self.headers = status, body or {}, text or json.dumps(body or {}), headers or {}
+
+        def json(self):
+            return self._body
+
+    def audio_body(self):
+        return {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/L16;codec=pcm;rate=24000", "data": self.pcm}}]}}]}
+
+    def client(self, responses):
+        calls = []
+
+        class Session:
+            def post(_self, url, params, json, timeout):
+                calls.append((url, json))
+                return responses.pop(0)
+
+        tts = self.tts_module.GeminiTTS(BASE_CFG, api_key="test", session=Session(), sleep=self.sleeps.append)
+        return tts, calls
+
+    def test_request_names_voice_language_and_pace(self):
+        tts, calls = self.client([self.Response(200, self.audio_body())])
+        tts.synthesize("我特别喜欢旅行。", "MC_F", "zh-CN", slow=True)
+        url, body = calls[0]
+        self.assertIn(":generateContent", url)
+        self.assertEqual(body["generationConfig"]["responseModalities"], ["AUDIO"])
+        voice = body["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"]
+        self.assertEqual(voice, BASE_CFG["tts"]["gemini"]["voices"]["MC_F"])
+        prompt = body["contents"][0]["parts"][0]["text"]
+        self.assertIn("Mandarin Chinese", prompt)
+        self.assertIn("slowly", prompt)
+        self.assertTrue(prompt.endswith(": 我特别喜欢旅行。"))
+
+    def test_pcm_is_decoded_and_edge_silence_trimmed(self):
+        tts, _ = self.client([self.Response(200, self.audio_body())])
+        audio = tts.synthesize("Hola", "MC_M", "es-ES")
+        self.assertEqual(audio.frame_rate, 24000)
+        self.assertTrue(800 <= len(audio) <= 1000, len(audio))
+
+    def test_falls_back_to_next_model_and_remembers_it(self):
+        tts, calls = self.client([
+            self.Response(404, text="models/x is not found"),
+            self.Response(200, self.audio_body()),
+            self.Response(200, self.audio_body()),
+        ])
+        tts.synthesize("Hola", "MC_M", "es-ES")
+        tts.synthesize("Adiós", "MC_M", "es-ES")
+        models = [url.split("/models/")[1].split(":")[0] for url, _ in calls]
+        first, second = BASE_CFG["tts"]["gemini"]["models"][:2]
+        self.assertEqual(models, [first, second, second])
+
+    def test_rate_limit_waits_for_server_retry_delay(self):
+        busy = self.Response(429, text='{"error": {"details": [{"retryDelay": "7s"}]}}')
+        tts, _ = self.client([busy, self.Response(200, {"candidates": []}), self.Response(200, self.audio_body())])
+        tts.synthesize("Hola", "MC_M", "es-ES")
+        self.assertEqual(self.sleeps[0], 7.0)
+
+    def test_hard_errors_raise(self):
+        tts, calls = self.client([self.Response(400, text='{"reason": "API_KEY_INVALID"}')])
+        for _ in range(2):
+            with self.assertRaises(self.tts_module.GeminiTTSError):
+                tts.synthesize("Hola", "MC_M", "es-ES")
+        self.assertEqual(len(calls), 1, "a rejected key must not be retried for later lines")
+
+    def test_estimated_word_timings_follow_text_order(self):
+        estimate = self.tts_module.estimate_word_timings
+        words = estimate("¿Has visto la noticia?", 2.0)
+        self.assertEqual([w[2] for w in words], ["Has", "visto", "la", "noticia"])
+        self.assertTrue(all(a[1] <= b[0] for a, b in zip(words, words[1:])))
+        self.assertLessEqual(words[-1][1], 2.0)
+        self.assertEqual([w[2] for w in estimate("我喜欢 AI", 1.0)], ["我", "喜", "欢", "AI"])
+        ranges = publish.word_ranges("¿Has visto la noticia?", words)
+        self.assertEqual(len(ranges), 4)
+
+    def test_failed_gemini_episode_is_rendered_with_edge(self):
+        try:
+            render = load_script("render_language_episodes")
+        except ImportError as exc:
+            self.skipTest(f"audio dependencies unavailable: {exc}")
+
+        class Broken:
+            model_in_use = None
+
+            def synthesize(self, *args, **kwargs):
+                raise render.GeminiTTSError("quota exhausted")
+
+        async def fake_edge(cfg, utterances, work):
+            return ["edge.mp3"], [[]]
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(render, "synthesize", fake_edge):
+            paths, _, engine = render.render_audio(BASE_CFG, [{"text": "Hola", "speaker": "MC_F", "language": "es-ES"}], Path(temporary), Broken())
+        self.assertEqual((paths, engine), (["edge.mp3"], "edge"))
 
 
 class KaraokeTests(unittest.TestCase):
