@@ -14,7 +14,7 @@ import yaml
 from pydub import AudioSegment
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gemini_tts import GeminiTTS, GeminiTTSError, estimate_word_timings  # noqa: E402
+from tts_engines import GeminiEpisodeTTS, OpenAITTS, TTSError, estimate_word_timings, slow_down, tempo_from_rate  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
@@ -64,19 +64,47 @@ async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> tuple[lis
     return paths, word_timings
 
 
-def synthesize_gemini(tts: GeminiTTS, utterances: list[dict], work: Path) -> tuple[list[Path], list[list[list]]]:
-    """One Gemini request per utterance; word timings are estimated within each line."""
+def synthesize_with(engine, cfg: dict, utterances: list[dict], work: Path) -> tuple[list[Path], list[list[list]]]:
+    """Render every line with one cloud engine; slow lines are time-stretched, word timings estimated."""
+    slow_tempo = tempo_from_rate(str(cfg.get("learning", {}).get("slow_rate", "-25%")))
+    learner_tempo = float(cfg["tts"].get("target_language_tempo", 1.0))
+    clips = engine.render(utterances)
+    if len(clips) != len(utterances):
+        raise TTSError(f"{engine.name}: {len(clips)} clips for {len(utterances)} lines")
     paths: list[Path] = []
     word_timings: list[list[list]] = []
-    for index, utterance in enumerate(utterances):
-        audio = tts.synthesize(utterance["text"], utterance["speaker"], utterance["language"], bool(utterance.get("slow")))
+    for index, (utterance, audio) in enumerate(zip(utterances, clips)):
         if len(audio) < 150:
-            raise GeminiTTSError(f"utterance {index} produced only {len(audio)} ms of audio")
+            raise TTSError(f"{engine.name}: line {index} produced only {len(audio)} ms of audio")
+        if utterance.get("slow"):
+            audio = slow_down(audio, slow_tempo)
+        elif utterance["language"] != "ja-JP":
+            audio = slow_down(audio, learner_tempo)
         path = work / f"{index:03d}.wav"
         audio.export(path, format="wav")
         paths.append(path)
         word_timings.append(estimate_word_timings(utterance["text"], len(audio) / 1000))
     return paths, word_timings
+
+
+def tts_order(cfg: dict) -> list[str]:
+    override = os.getenv("TTS_ORDER", "").strip()
+    order = [x.strip() for x in override.split(",") if x.strip()] if override else list(cfg["tts"]["order"])
+    return order if "edge" in order else [*order, "edge"]  # Edge needs no key: always the last resort
+
+
+def open_engines(cfg: dict) -> list:
+    """Cloud engines in priority order, skipping those without credentials."""
+    engines = []
+    for name in tts_order(cfg):
+        factory = {"gemini": GeminiEpisodeTTS, "openai": OpenAITTS}.get(name)
+        if factory is None:
+            continue
+        try:
+            engines.append(factory(cfg))
+        except TTSError as exc:
+            print(f"[tts] {name} skipped: {exc}")
+    return engines
 
 
 def pause_after(utterance: dict, previous_language: str | None, segment_ms: int, cfg: dict) -> int:
@@ -153,16 +181,14 @@ def probe_duration(path: Path) -> float:
     return float(result.stdout.strip())
 
 
-def render_audio(cfg: dict, utterances: list[dict], work: Path, gemini: GeminiTTS | None) -> tuple[list[Path], list, str]:
-    """Synthesise every line with one engine, so a single episode never mixes voices."""
-    if gemini is not None:
+def render_audio(cfg: dict, utterances: list[dict], work: Path, engines: list) -> tuple[list[Path], list, str]:
+    """Try each engine in order (Gemini, then OpenAI, then Edge); one episode never mixes voices."""
+    for engine in engines:
         try:
-            paths, words = synthesize_gemini(gemini, utterances, work)
-            return paths, words, f"gemini:{gemini.model_in_use}"
-        except GeminiTTSError as exc:
-            if cfg["tts"].get("fallback") != "edge":
-                raise
-            print(f"::warning::Gemini TTS failed ({exc}); rendering this episode with Edge TTS instead")
+            paths, words = synthesize_with(engine, cfg, utterances, work)
+            return paths, words, f"{engine.name}:{engine.model_in_use}"
+        except TTSError as exc:
+            print(f"::warning::{engine.name} TTS failed for this episode ({exc}); trying the next engine")
             for leftover in work.iterdir():
                 leftover.unlink()
     paths, words = asyncio.run(synthesize(cfg, utterances, work))
@@ -179,16 +205,9 @@ def main() -> int:
     manifest = json.loads((args.episode_dir / "manifest.json").read_text(encoding="utf-8"))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     media = {"episode_date": manifest["episode_date"], "episodes": [], "failed": []}
-    minimum = float(cfg["episode"]["minimum_seconds"])
-    maximum = float(cfg["episode"]["maximum_seconds"])
+    minimum, maximum = (float(x) for x in cfg["episode"].get("audio_seconds", [cfg["episode"]["minimum_seconds"], cfg["episode"]["maximum_seconds"]]))
 
-    provider = os.getenv("TTS_PROVIDER", "").strip() or cfg["tts"]["provider"]
-    gemini = None
-    if provider == "gemini":
-        try:
-            gemini = GeminiTTS(cfg)
-        except GeminiTTSError as exc:
-            print(f"::warning::Gemini TTS unavailable ({exc}); using Edge TTS")
+    engines = open_engines(cfg)
 
     for item in manifest["episodes"]:
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
@@ -196,7 +215,7 @@ def main() -> int:
         output = args.output_dir / f"journey-talk-{manifest['episode_date']}-{slug}.mp3"
         try:
             with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
-                paths, word_timings, engine = render_audio(cfg, episode["utterances"], Path(temp), gemini)
+                paths, word_timings, engine = render_audio(cfg, episode["utterances"], Path(temp), engines)
                 audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
                 offline = output.with_name(offline_name(output.name))
                 export_normalized(audio, output, offline)
@@ -222,7 +241,7 @@ def main() -> int:
                 "offline_audio": offline.name,
                 "offline_bytes": offline.stat().st_size,
                 "tts": engine,
-                "words_estimated": engine.startswith("gemini"),
+                "words_estimated": engine != "edge",
                 "timeline": timeline,
                 "words": words,
             }

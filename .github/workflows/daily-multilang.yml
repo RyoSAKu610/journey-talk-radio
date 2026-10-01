@@ -9,7 +9,7 @@ on:
       - "scripts/build_language_episodes.py"
       - "scripts/build_weekly_review.py"
       - "scripts/render_language_episodes.py"
-      - "scripts/gemini_tts.py"
+      - "scripts/tts_engines.py"
       - "scripts/qa_language_episodes.py"
       - "scripts/publish_multilang_site.py"
       - "docs/index.html"
@@ -47,7 +47,9 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
-      TTS_PROVIDER: ${{ vars.TTS_PROVIDER }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_TTS_MODEL: ${{ vars.OPENAI_TTS_MODEL }}
+      TTS_ORDER: ${{ vars.TTS_ORDER }}
 
     steps:
       - uses: actions/checkout@v6
@@ -80,7 +82,7 @@ jobs:
             exit 1
           fi
           python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
-          python -m py_compile scripts/build_language_episodes.py scripts/build_weekly_review.py scripts/render_language_episodes.py scripts/gemini_tts.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
+          python -m py_compile scripts/build_language_episodes.py scripts/build_weekly_review.py scripts/render_language_episodes.py scripts/tts_engines.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
           python - <<'PY'
           import yaml
           cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))

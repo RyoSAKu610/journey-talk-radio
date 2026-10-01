@@ -198,17 +198,24 @@ Write a corrected, complete episode that satisfies every requirement."""
 
 
 def length_plan(lang: dict, cfg: dict) -> str:
-    """Concrete volume targets. Models badly under-estimate how much text fills 10+ minutes of audio."""
-    lo = max(int(cfg["episode"]["minimum_utterances"]), 52)
-    hi = min(int(cfg["episode"]["maximum_utterances"]), 64)
-    if lang["code"] in {"zh-CN", "ko-KR"}:
-        target_turn = "35 to 70 characters"
-    else:
-        target_turn = "100 to 180 characters (two or three full sentences)"
+    """Concrete volume targets derived from the measured speaking rates.
+
+    Models badly under-estimate how much text fills 10+ minutes of audio, and the right amount differs
+    a lot by language (a Chinese line needs far fewer characters than a Spanish one).
+    """
+    rates = {**DEFAULT_RATES, **(cfg["episode"].get("speech_rates") or {})}
+    target = (cfg["episode"]["minimum_seconds"] + cfg["episode"]["maximum_seconds"]) / 2
+    turns, japanese_turns, target_turns = 66, 26, 40
+    japanese_seconds = japanese_turns * 55 / rates["ja-JP"]
+    per_turn = max(3.0, (target - 0.55 * turns - japanese_seconds - 20) / target_turns)
+    middle = per_turn * float(rates.get(lang["code"], LATIN_RATE))
+    low, high = int(round(middle * 0.7, -1)), int(round(middle * 1.3, -1))
+    unit = "characters (not counting spaces)" if lang["code"] in NO_SPACE_COUNT else "characters"
     return f"""Length plan (the finished audio must run {cfg['episode']['minimum_seconds'] // 60} to {cfg['episode']['maximum_seconds'] // 60} minutes, so this volume is required):
-- Write {lo} to {hi} utterances in total.
-- {lang['name']} turns: {target_turn} each. Japanese turns: 35 to 70 characters each. Avoid one-word or one-phrase turns.
-- Structure: opening chat (about 6 turns), each news story (about 13 turns each), review with slow repeats
+- Write 60 to 74 utterances in total, about {target_turns} in {lang['name']} and about {japanese_turns} in Japanese.
+- {lang['name']} turns: {low} to {high} {unit} each (two to four full sentences). Japanese turns: 40 to 75 characters each.
+  Avoid one-word or one-phrase turns.
+- Structure: opening chat (about 6 turns), each news story (about 15 turns each), review with slow repeats
   (about 10 turns), aftertalk (about 6 turns)."""
 
 
@@ -289,16 +296,22 @@ SLOW_FACTOR = 1.33
 SHADOWING_SECONDS = 1.6
 
 
-def estimate_seconds(utterances: list[dict]) -> float:
+DEFAULT_RATES = {"ja-JP": 7.4, "zh-CN": 3.8, "ko-KR": 4.7}
+LATIN_RATE = 15.0
+NO_SPACE_COUNT = {"ja-JP", "zh-CN", "ko-KR"}
+
+
+def spoken_units(text: str, language: str) -> int:
+    return len(re.sub(r"\s+", "", text)) if language in NO_SPACE_COUNT else len(text)
+
+
+def estimate_seconds(utterances: list[dict], rates: dict | None = None) -> float:
+    """Expected audio length: characters at the measured per-language speaking rate, plus pauses."""
+    rates = {**DEFAULT_RATES, **(rates or {})}
     total = 0.0
     for utterance in utterances:
-        text = utterance["text"]
-        lang = utterance["language"]
-        visible = len(re.sub(r"\s+", "", text))
-        if lang in {"ja-JP", "zh-CN", "ko-KR"}:
-            spoken = visible / 5.0
-        else:
-            spoken = len(text) / 13.0
+        language = utterance["language"]
+        spoken = spoken_units(utterance["text"], language) / float(rates.get(language, LATIN_RATE))
         if utterance.get("slow"):
             spoken = spoken * SLOW_FACTOR + SHADOWING_SECONDS
         total += spoken + 0.55
@@ -369,7 +382,7 @@ def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg
         raise ValueError("both Japanese and target language must appear")
     if target_chars <= sum(len(x["text"]) for x in cleaned) / 2:
         raise ValueError("target language must be the majority of spoken text")
-    estimate = estimate_seconds(cleaned)
+    estimate = estimate_seconds(cleaned, cfg["episode"].get("speech_rates"))
     minimum = int(cfg["episode"]["minimum_seconds"])
     maximum = int(cfg["episode"]["maximum_seconds"])
     if not minimum <= estimate <= maximum:

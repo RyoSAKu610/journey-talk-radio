@@ -6,13 +6,26 @@ provider:
 episode:
   minimum_seconds: 600
   maximum_seconds: 900
-  minimum_utterances: 44
-  maximum_utterances: 68
+  minimum_utterances: 50
+  maximum_utterances: 80
   temperature: 0.35
-  max_output_tokens: 16384
+  max_output_tokens: 32768
   stories: 3
   generation_attempts: 3
   learner_level: "CEFR B1"
+  # Finished audio accepted by the renderer. The script is sized for 600-900 s with Gemini; the fallback
+  # engines speak at a different pace, so the audio check is wider than the script contract.
+  audio_seconds: [540, 1080]
+  # Spoken characters per second (spaces ignored for ja/zh/ko), measured on Gemini 3.8 Flash TTS after
+  # tts.target_language_tempo. Used to size scripts. ja/es come from a full episode, de/ru/zh/ko from
+  # single lines: refine them from real runs (render logs each episode's duration).
+  speech_rates:
+    ja-JP: 7.4
+    es-ES: 15.8
+    de-DE: 16.0
+    ru-RU: 11.0
+    zh-CN: 3.8
+    ko-KR: 4.7
 
 learning:
   vocabulary_min: 5
@@ -33,20 +46,33 @@ hosts:
   MC_M: "レン"
 
 tts:
-  # gemini: one multilingual Gemini voice per host (needs GEMINI_API_KEY). edge: Microsoft Edge voices.
-  provider: gemini
-  # If Gemini TTS fails for an episode, render that whole episode with Edge TTS instead of skipping it.
-  fallback: edge
+  # Engines tried in order for each episode; one episode never mixes engines. Edge TTS needs no key and
+  # is always the last resort. Override with the TTS_ORDER repository variable, e.g. "openai,edge".
+  order: [gemini, openai, edge]
+  # Gemini and OpenAI voices speak quickly; target-language lines are slowed to this tempo for learners
+  # (pitch preserved). Japanese navigation keeps its natural pace. Edge already uses a learner pace.
+  target_language_tempo: 0.85
   gemini:
-    # Tried in order until one is accepted; override with the GEMINI_TTS_MODEL repository variable.
-    models: ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"]
+    # Free tier: about 10 requests per model per day, so the whole episode is one multi-speaker request,
+    # split into lines afterwards. Tried in order; GEMINI_TTS_MODEL overrides.
+    models: ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"]
     voices:
       MC_F: "Aoede"
       MC_M: "Puck"
-    normal_direction: "Speak in {language} as a warm, relaxed radio host chatting naturally with a co-host"
-    slow_direction: "Speak in {language} slowly and very clearly, with a small pause between words, so a learner can repeat after you"
-    max_attempts: 6
-    min_interval_seconds: 0
+    speaker_labels:
+      MC_F: "Mina"
+      MC_M: "Ren"
+    # Appended to every line so the hand-over pauses stand out when the take is split into lines.
+    line_break_tag: "[long pause]"
+    max_attempts: 4
+  openai:
+    # Used when OPENAI_API_KEY is set; one request per line. OPENAI_TTS_MODEL overrides.
+    models: ["gpt-4o-mini-tts", "tts-1-hd"]
+    voices:
+      MC_F: "coral"
+      MC_M: "ash"
+    instructions: "Speak in {language} as a warm, relaxed radio host chatting naturally with a co-host. Use native pronunciation."
+    max_attempts: 5
 
 qa:
   max_silence_seconds: 3.0

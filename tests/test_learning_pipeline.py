@@ -3,7 +3,9 @@ from __future__ import annotations
 import base64
 import copy
 import importlib.util
+import io
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -42,9 +44,12 @@ def test_cfg() -> dict:
     return cfg
 
 
+LINES = 56
+
+
 def raw_episode(slow_lines: int = 2, translate: bool = True) -> dict:
     utterances = []
-    for index in range(48):
+    for index in range(LINES):
         speaker = "MC_F" if index % 2 == 0 else "MC_M"
         if index % 4 == 0:
             utterances.append({"speaker": speaker, "language": "ja-JP", "text": "ポイントを確認しましょう。", "ja": "ignored"})
@@ -52,7 +57,7 @@ def raw_episode(slow_lines: int = 2, translate: bool = True) -> dict:
             item = {"speaker": speaker, "language": "es-ES", "text": f"Me encanta viajar en tren número {index}.", "ja": "電車の旅が大好き。"}
             if not translate:
                 item.pop("ja")
-            if index >= 48 - slow_lines * 2 and index % 2:
+            if index >= LINES - slow_lines * 2 and index % 2:
                 item["slow"] = True
             utterances.append(item)
     return {
@@ -150,10 +155,15 @@ class TextModelTests(unittest.TestCase):
 
     def test_short_scripts_get_actionable_feedback(self):
         raw = raw_episode()
-        raw["utterances"] = raw["utterances"][:44]
+        raw["utterances"] = raw["utterances"][:52]
         with self.assertRaisesRegex(ValueError, r"too short: add turns"):
             build.validate_episode(raw, DATE, LANG, STORIES, BASE_CFG)
-        self.assertIn("Write 52 to 64 utterances", build.length_plan(LANG, BASE_CFG))
+        spanish = build.length_plan(LANG, BASE_CFG)
+        chinese = build.length_plan(next(x for x in BASE_CFG["languages"] if x["slug"] == "zh"), BASE_CFG)
+        self.assertIn("Write 60 to 74 utterances", spanish)
+        turn_chars = lambda plan: int(re.search(r"turns: (\d+) to", plan).group(1))
+        # Turn sizes follow the measured speaking rate: a Chinese turn needs far fewer characters.
+        self.assertGreater(turn_chars(spanish), 3 * turn_chars(chinese))
 
 
 class GenerationRetryTests(unittest.TestCase):
@@ -181,7 +191,7 @@ class GenerationRetryTests(unittest.TestCase):
             episode = build.generate_episode(DATE, LANG, STORIES, cfg)
         self.assertEqual(fake.call_count, cfg["episode"]["generation_attempts"])
         self.assertEqual(episode["vocabulary"], [])
-        self.assertEqual(len(episode["utterances"]), 48)
+        self.assertEqual(len(episode["utterances"]), LINES)
 
     def test_one_failed_language_does_not_block_the_others(self):
         cfg = test_cfg()
@@ -410,121 +420,172 @@ class OfflineAndArtworkTests(unittest.TestCase):
             self.assertAlmostEqual(render.probe_duration(master), render.probe_duration(offline), delta=0.1)
 
 
-class GeminiTTSTests(unittest.TestCase):
+class SpeechEngineTests(unittest.TestCase):
+    """Gemini (one take per episode, split into lines), OpenAI (per line) and the engine order."""
+
     def setUp(self):
         try:
-            sys.path.insert(0, str(PROJECT_DIR / "scripts"))
-            self.tts_module = load_script("gemini_tts")
+            self.tts = load_script("tts_engines")
             from pydub import AudioSegment
             from pydub.generators import Sine
         except ImportError as exc:  # audio dependencies are installed in CI
             self.skipTest(f"audio dependencies unavailable: {exc}")
-        self.AudioSegment = AudioSegment
-        tone = Sine(440).to_audio_segment(duration=800).set_frame_rate(24000).set_channels(1).set_sample_width(2)
-        padded = AudioSegment.silent(duration=400, frame_rate=24000) + tone + AudioSegment.silent(duration=500, frame_rate=24000)
-        self.pcm = base64.b64encode(padded.raw_data).decode()
+        self.AudioSegment, self.Sine = AudioSegment, Sine
         self.sleeps = []
+        self.utterances = [
+            {"speaker": "MC_F", "language": "ja-JP", "text": "それでは次の話題です。夜行列車が人気だそうです。"},
+            {"speaker": "MC_M", "language": "es-ES", "text": "¿Has visto la noticia de hoy sobre los trenes nocturnos?"},
+            {"speaker": "MC_F", "language": "es-ES", "text": "Sí, dicen que vuelven a estar de moda en Europa."},
+            {"speaker": "MC_M", "language": "es-ES", "text": "Vale la pena, aunque tarde más.", "slow": True},
+        ]
+
+    def take(self, lengths, gap_ms=900, inner_gap_ms=None):
+        """A synthetic multi-line take: one tone per line, separated by hand-over pauses."""
+        audio = self.AudioSegment.silent(duration=200, frame_rate=24000)
+        for index, ms in enumerate(lengths):
+            if inner_gap_ms:  # a breath inside the line, shorter than the hand-over pause
+                half = ms // 2
+                audio += self.Sine(220 + 60 * index).to_audio_segment(duration=half).apply_gain(-6)
+                audio += self.AudioSegment.silent(duration=inner_gap_ms, frame_rate=24000)
+                audio += self.Sine(220 + 60 * index).to_audio_segment(duration=ms - half).apply_gain(-6)
+            else:
+                audio += self.Sine(220 + 60 * index).to_audio_segment(duration=ms).apply_gain(-6)
+            audio += self.AudioSegment.silent(duration=gap_ms, frame_rate=24000)
+        return audio.set_frame_rate(24000).set_channels(1).set_sample_width(2)
 
     class Response:
-        def __init__(self, status, body=None, text="", headers=None):
-            self.status_code, self._body, self.text, self.headers = status, body or {}, text or json.dumps(body or {}), headers or {}
+        def __init__(self, status, body=None, text="", content=b"", headers=None):
+            self.status_code, self._body, self.content, self.headers = status, body or {}, content, headers or {}
+            self.text = text or (json.dumps(body) if body else "")
 
         def json(self):
             return self._body
 
-    def audio_body(self):
-        return {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/L16;codec=pcm;rate=24000", "data": self.pcm}}]}}]}
+    def gemini_body(self, audio):
+        buffer = io.BytesIO()
+        audio.export(buffer, format="wav")
+        return {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/wav", "data": base64.b64encode(buffer.getvalue()).decode()}}]}}]}
 
-    def client(self, responses):
-        calls = []
-
+    def session(self, responses, calls):
         class Session:
-            def post(_self, url, params, json, timeout):
-                calls.append((url, json))
+            def post(_self, url, **kwargs):
+                calls.append((url, kwargs))
                 return responses.pop(0)
+        return Session()
 
-        tts = self.tts_module.GeminiTTS(BASE_CFG, api_key="test", session=Session(), sleep=self.sleeps.append)
-        return tts, calls
+    def test_gemini_sends_one_tagged_multi_speaker_request_per_episode(self):
+        expected = [self.tts.expected_seconds(u["text"], u["language"]) for u in self.utterances]
+        take = self.take([int(e * 1000) for e in expected])
+        calls = []
+        engine = self.tts.GeminiEpisodeTTS(BASE_CFG, api_key="k", session=self.session([self.Response(200, self.gemini_body(take))], calls), sleep=self.sleeps.append)
+        clips = engine.render(self.utterances)
+        self.assertEqual(len(calls), 1)
+        body = calls[0][1]["json"]
+        parts = body["contents"][0]["parts"]
+        self.assertEqual([p["speechMetadata"]["speaker"] for p in parts], ["Mina", "Ren", "Mina", "Ren"])
+        self.assertTrue(all(p["text"].endswith("[long pause]") for p in parts))
+        voices = body["generationConfig"]["speechConfig"]["multiSpeakerVoiceConfig"]["speakerVoiceConfigs"]
+        self.assertEqual({v["speaker"] for v in voices}, {"Mina", "Ren"})
+        for clip, want in zip(clips, expected):
+            self.assertAlmostEqual(len(clip) / 1000, want, delta=0.25)
 
-    def test_request_names_voice_language_and_pace(self):
-        tts, calls = self.client([self.Response(200, self.audio_body())])
-        tts.synthesize("我特别喜欢旅行。", "MC_F", "zh-CN", slow=True)
-        url, body = calls[0]
-        self.assertIn(":generateContent", url)
-        self.assertEqual(body["generationConfig"]["responseModalities"], ["AUDIO"])
-        voice = body["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"]
-        self.assertEqual(voice, BASE_CFG["tts"]["gemini"]["voices"]["MC_F"])
-        prompt = body["contents"][0]["parts"][0]["text"]
-        self.assertIn("Mandarin Chinese", prompt)
-        self.assertIn("slowly", prompt)
-        self.assertTrue(prompt.endswith(": 我特别喜欢旅行。"))
+    def test_split_prefers_hand_over_pauses_to_breaths_inside_a_line(self):
+        lengths = [3000, 4200, 2600, 3600, 2200, 4000]
+        take = self.take(lengths, gap_ms=1100, inner_gap_ms=450)
+        spans = self.tts.align_lines(take, [x / 1000 for x in lengths])
+        self.assertEqual(len(spans), 6)
+        for (a, b), want in zip(spans, lengths):
+            # Each clip holds exactly its own line (including the breath inside it) once edge silence is trimmed.
+            self.assertAlmostEqual(len(self.tts.trim_silence(take[a:b])), want + 450, delta=150)
 
-    def test_pcm_is_decoded_and_edge_silence_trimmed(self):
-        tts, _ = self.client([self.Response(200, self.audio_body())])
-        audio = tts.synthesize("Hola", "MC_M", "es-ES")
-        self.assertEqual(audio.frame_rate, 24000)
-        self.assertTrue(800 <= len(audio) <= 1000, len(audio))
+    def test_take_that_does_not_match_the_script_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.tts.align_lines(self.take([3000, 3000]), [1.0, 1.0, 1.0, 1.0, 1.0, 8.0])
 
-    def test_falls_back_to_next_model_and_remembers_it(self):
-        tts, calls = self.client([
-            self.Response(404, text="models/x is not found"),
-            self.Response(200, self.audio_body()),
-            self.Response(200, self.audio_body()),
-        ])
-        tts.synthesize("Hola", "MC_M", "es-ES")
-        tts.synthesize("Adiós", "MC_M", "es-ES")
+    def test_gemini_moves_on_after_daily_quota_and_remembers_rejected_keys(self):
+        expected = [self.tts.expected_seconds(u["text"], u["language"]) for u in self.utterances]
+        take = self.take([int(e * 1000) for e in expected])
+        quota = self.Response(429, text='{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}')
+        calls = []
+        engine = self.tts.GeminiEpisodeTTS(BASE_CFG, api_key="k", session=self.session([quota, self.Response(200, self.gemini_body(take))], calls), sleep=self.sleeps.append)
+        engine.render(self.utterances)
         models = [url.split("/models/")[1].split(":")[0] for url, _ in calls]
-        first, second = BASE_CFG["tts"]["gemini"]["models"][:2]
-        self.assertEqual(models, [first, second, second])
-
-    def test_rate_limit_waits_for_server_retry_delay(self):
-        busy = self.Response(429, text='{"error": {"details": [{"retryDelay": "7s"}]}}')
-        tts, _ = self.client([busy, self.Response(200, {"candidates": []}), self.Response(200, self.audio_body())])
-        tts.synthesize("Hola", "MC_M", "es-ES")
-        self.assertEqual(self.sleeps[0], 7.0)
-
-    def test_daily_quota_moves_to_the_next_model(self):
-        quota = self.Response(429, text='{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier", "retryDelay": "40s"}')
-        tts, calls = self.client([quota, self.Response(200, self.audio_body())])
-        tts.synthesize("Hola", "MC_M", "es-ES")
-        self.assertEqual(self.sleeps, [], "a spent daily quota must not be waited out")
-        self.assertEqual(tts.model_in_use, BASE_CFG["tts"]["gemini"]["models"][1])
-
-    def test_hard_errors_raise(self):
-        tts, calls = self.client([self.Response(400, text='{"reason": "API_KEY_INVALID"}')])
+        self.assertEqual(models, BASE_CFG["tts"]["gemini"]["models"][:2])
+        self.assertEqual(self.sleeps, [])
+        calls.clear()
+        engine = self.tts.GeminiEpisodeTTS(BASE_CFG, api_key="k", session=self.session([self.Response(400, text="API_KEY_INVALID")], calls), sleep=self.sleeps.append)
         for _ in range(2):
-            with self.assertRaises(self.tts_module.GeminiTTSError):
-                tts.synthesize("Hola", "MC_M", "es-ES")
-        self.assertEqual(len(calls), 1, "a rejected key must not be retried for later lines")
+            with self.assertRaises(self.tts.TTSError):
+                engine.render(self.utterances)
+        self.assertEqual(len(calls), 1)
+
+    def test_rate_limits_wait_for_the_server_retry_delay(self):
+        expected = [self.tts.expected_seconds(u["text"], u["language"]) for u in self.utterances]
+        take = self.take([int(e * 1000) for e in expected])
+        busy = self.Response(429, text='{"details": [{"retryDelay": "7s"}]}')
+        engine = self.tts.GeminiEpisodeTTS(BASE_CFG, api_key="k", session=self.session([busy, self.Response(200, self.gemini_body(take))], []), sleep=self.sleeps.append)
+        engine.render(self.utterances)
+        self.assertEqual(self.sleeps, [7.0])
+
+    def test_openai_renders_each_line_with_language_instructions(self):
+        pcm = self.Sine(300).to_audio_segment(duration=900).set_frame_rate(24000).set_channels(1).set_sample_width(2).raw_data
+        calls = []
+        responses = [self.Response(200, content=pcm) for _ in self.utterances]
+        engine = self.tts.OpenAITTS(BASE_CFG, api_key="k", session=self.session(responses, calls), sleep=self.sleeps.append)
+        clips = engine.render(self.utterances)
+        self.assertEqual(len(calls), len(self.utterances))
+        first = calls[0][1]
+        self.assertEqual(first["headers"]["Authorization"], "Bearer k")
+        self.assertEqual(first["json"]["voice"], BASE_CFG["tts"]["openai"]["voices"]["MC_F"])
+        self.assertEqual(first["json"]["response_format"], "pcm")
+        self.assertIn("Japanese", first["json"]["instructions"])
+        self.assertIn("Spanish", calls[1][1]["json"]["instructions"])
+        self.assertTrue(all(800 <= len(c) <= 1000 for c in clips))
+
+    def test_openai_without_quota_fails_fast(self):
+        engine = self.tts.OpenAITTS(BASE_CFG, api_key="k", session=self.session([self.Response(429, text="insufficient_quota")], []), sleep=self.sleeps.append)
+        with self.assertRaisesRegex(self.tts.TTSError, "no remaining quota"):
+            engine.render(self.utterances[:1])
+
+    def test_slow_rate_and_time_stretch(self):
+        self.assertEqual(self.tts.tempo_from_rate("-25%"), 0.75)
+        self.assertEqual(self.tts.tempo_from_rate("+0%"), 1.0)
+        tone = self.Sine(300).to_audio_segment(duration=2000)
+        self.assertAlmostEqual(len(self.tts.slow_down(tone, 0.75)) / 1000, 2.0 / 0.75, delta=0.1)
 
     def test_estimated_word_timings_follow_text_order(self):
-        estimate = self.tts_module.estimate_word_timings
-        words = estimate("¿Has visto la noticia?", 2.0)
+        words = self.tts.estimate_word_timings("¿Has visto la noticia?", 2.0)
         self.assertEqual([w[2] for w in words], ["Has", "visto", "la", "noticia"])
         self.assertTrue(all(a[1] <= b[0] for a, b in zip(words, words[1:])))
-        self.assertLessEqual(words[-1][1], 2.0)
-        self.assertEqual([w[2] for w in estimate("我喜欢 AI", 1.0)], ["我", "喜", "欢", "AI"])
-        ranges = publish.word_ranges("¿Has visto la noticia?", words)
-        self.assertEqual(len(ranges), 4)
+        self.assertEqual([w[2] for w in self.tts.estimate_word_timings("我喜欢 AI", 1.0)], ["我", "喜", "欢", "AI"])
+        self.assertEqual(len(publish.word_ranges("¿Has visto la noticia?", words)), 4)
 
-    def test_failed_gemini_episode_is_rendered_with_edge(self):
+    def test_engines_are_tried_in_order_down_to_edge(self):
         try:
             render = load_script("render_language_episodes")
         except ImportError as exc:
             self.skipTest(f"audio dependencies unavailable: {exc}")
+        self.assertEqual(render.tts_order(BASE_CFG), ["gemini", "openai", "edge"])
+        with mock.patch.dict("os.environ", {"TTS_ORDER": "openai"}):
+            self.assertEqual(render.tts_order(BASE_CFG), ["openai", "edge"])
 
-        class Broken:
-            model_in_use = None
+        class Failing:
+            def __init__(self, name):
+                self.name, self.model_in_use, self.calls = name, None, 0
 
-            def synthesize(self, *args, **kwargs):
-                raise render.GeminiTTSError("quota exhausted")
+            def render(self, utterances):
+                self.calls += 1
+                raise render.TTSError("quota exhausted")
 
         async def fake_edge(cfg, utterances, work):
             return ["edge.mp3"], [[]]
 
+        gemini, openai = Failing("gemini"), Failing("openai")
         with tempfile.TemporaryDirectory() as temporary, mock.patch.object(render, "synthesize", fake_edge):
-            paths, _, engine = render.render_audio(BASE_CFG, [{"text": "Hola", "speaker": "MC_F", "language": "es-ES"}], Path(temporary), Broken())
-        self.assertEqual((paths, engine), (["edge.mp3"], "edge"))
+            paths, _, engine = render.render_audio(BASE_CFG, self.utterances[:1], Path(temporary), [gemini, openai])
+        self.assertEqual((paths, engine, gemini.calls, openai.calls), (["edge.mp3"], "edge", 1, 1))
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "", "OPENAI_API_KEY": ""}):
+            self.assertEqual(render.open_engines(BASE_CFG), [])
 
 
 class KaraokeTests(unittest.TestCase):
