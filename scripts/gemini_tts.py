@@ -110,6 +110,9 @@ class GeminiTTS:
                 response.status_code == 400 and re.search(r"not (found|supported)|unknown model", response.text, re.I)
             ):
                 raise _ModelUnavailable(f"HTTP {response.status_code}")
+            if response.status_code == 429 and "PerDay" in response.text:
+                # The free tier's daily request quota is per model; waiting will not help today.
+                raise _ModelUnavailable("daily quota exhausted")
             if response.status_code in RETRYABLE and attempt < self.max_attempts:
                 delay = retry_delay(response) or min(60, 5 * 2 ** (attempt - 1))
                 print(f"[tts] HTTP {response.status_code}; retrying in {delay:.0f}s")

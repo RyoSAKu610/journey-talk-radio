@@ -124,6 +124,38 @@ class EpisodeValidationTests(unittest.TestCase):
             build.validate_learning(sparse, episode, cfg)
 
 
+class TextModelTests(unittest.TestCase):
+    class Response:
+        def __init__(self, status, body=None, text=""):
+            self.status_code, self._body, self.text = status, body or {}, text
+
+        def json(self):
+            return self._body
+
+    def test_retired_or_exhausted_models_fall_through_to_the_next(self):
+        answer = {"candidates": [{"content": {"parts": [{"text": "thinking...", "thought": True}, {"text": '{"ids": ["N01"]}'}]}}]}
+        responses = [self.Response(404, text="no longer available"), self.Response(429, text="GenerateRequestsPerDayPerProjectPerModel"), self.Response(200, answer)]
+        urls = []
+
+        def fake_post(url, **kwargs):
+            urls.append(url)
+            return responses.pop(0)
+
+        cfg = test_cfg()
+        with mock.patch.object(build.requests, "post", side_effect=fake_post), mock.patch.object(build.time, "sleep"), \
+                mock.patch.dict("os.environ", {"GEMINI_API_KEY": "test", "GEMINI_MODEL": ""}):
+            self.assertEqual(build.gemini_json("prompt", cfg), {"ids": ["N01"]})
+        self.assertEqual([u.split("/models/")[1].split(":")[0] for u in urls], cfg["provider"]["models"][:3])
+        self.assertEqual(build.MODEL_USED["name"], cfg["provider"]["models"][2])
+
+    def test_short_scripts_get_actionable_feedback(self):
+        raw = raw_episode()
+        raw["utterances"] = raw["utterances"][:44]
+        with self.assertRaisesRegex(ValueError, r"too short: add turns"):
+            build.validate_episode(raw, DATE, LANG, STORIES, BASE_CFG)
+        self.assertIn("Write 52 to 64 utterances", build.length_plan(LANG, BASE_CFG))
+
+
 class GenerationRetryTests(unittest.TestCase):
     def test_validator_feedback_is_sent_with_the_retry(self):
         cfg = test_cfg()
@@ -450,6 +482,13 @@ class GeminiTTSTests(unittest.TestCase):
         tts, _ = self.client([busy, self.Response(200, {"candidates": []}), self.Response(200, self.audio_body())])
         tts.synthesize("Hola", "MC_M", "es-ES")
         self.assertEqual(self.sleeps[0], 7.0)
+
+    def test_daily_quota_moves_to_the_next_model(self):
+        quota = self.Response(429, text='{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier", "retryDelay": "40s"}')
+        tts, calls = self.client([quota, self.Response(200, self.audio_body())])
+        tts.synthesize("Hola", "MC_M", "es-ES")
+        self.assertEqual(self.sleeps, [], "a spent daily quota must not be waited out")
+        self.assertEqual(tts.model_in_use, BASE_CFG["tts"]["gemini"]["models"][1])
 
     def test_hard_errors_raise(self):
         tts, calls = self.client([self.Response(400, text='{"reason": "API_KEY_INVALID"}')])

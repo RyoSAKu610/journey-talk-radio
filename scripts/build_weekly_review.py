@@ -85,6 +85,8 @@ Hard requirements:
   target-language ones. Then a one-line encouraging sign-off for next week.
 - No markdown or URLs inside spoken text.
 
+{daily.length_plan(lang, cfg).replace("each news story (about 13 turns each)", "the expressions (about 40 turns in total)")}
+
 {daily.materials_contract(lang, cfg)}
 The "vocabulary" list must be taken from this week's expressions below (you may correct a reading or meaning).
 

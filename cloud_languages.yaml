@@ -1,5 +1,7 @@
 provider:
-  model: "gemini-2.5-flash"
+  # Script-writing models, tried in order (gemini-2.5-flash is no longer offered to new API keys).
+  # Override with the GEMINI_MODEL repository variable.
+  models: ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
 
 episode:
   minimum_seconds: 600
@@ -37,7 +39,7 @@ tts:
   fallback: edge
   gemini:
     # Tried in order until one is accepted; override with the GEMINI_TTS_MODEL repository variable.
-    models: ["gemini-3.8-flash-tts", "gemini-2.5-flash-preview-tts"]
+    models: ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-2.5-flash-preview-tts"]
     voices:
       MC_F: "Aoede"
       MC_M: "Puck"

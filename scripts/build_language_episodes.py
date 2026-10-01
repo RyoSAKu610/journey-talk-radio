@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
-HTTP_ATTEMPTS = 4
+HTTP_ATTEMPTS = 3
 
 
 def clean(value: str) -> str:
@@ -32,12 +32,52 @@ def load_config() -> dict:
     return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
 
 
-def gemini_json(prompt: str, cfg: dict) -> dict:
+def text_models(cfg: dict) -> list[str]:
+    """Script-writing models, newest first; GEMINI_MODEL overrides."""
+    override = os.getenv("GEMINI_MODEL", "").strip()
+    return [m for m in [override, *cfg["provider"]["models"]] if m]
+
+
+MODEL_USED: dict[str, str] = {}
+
+
+def post_gemini(payload: dict, cfg: dict):
+    """POST to the first model that answers. Retries brief overloads, then moves on to the next
+    model when one is retired (404), out of daily quota, or stays overloaded."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
-    model = os.getenv("GEMINI_MODEL", "").strip() or cfg["provider"]["model"]
-    endpoint = GEMINI_ENDPOINT.format(model=model)
+    problems: list[str] = []
+    for model in text_models(cfg):
+        response = None
+        for attempt in range(1, HTTP_ATTEMPTS + 1):
+            try:
+                response = requests.post(GEMINI_ENDPOINT.format(model=model), params={"key": api_key}, json=payload, timeout=(20, 240))
+            except requests.RequestException as exc:
+                response = None
+                problems.append(f"{model}: {exc}")
+                time.sleep(15 * attempt)
+                continue
+            daily_quota = response.status_code == 429 and "PerDay" in response.text
+            if response.status_code in RETRYABLE_STATUS and not daily_quota and attempt < HTTP_ATTEMPTS:
+                print(f"[warn] {model} HTTP {response.status_code}; retrying in {15 * attempt}s")
+                time.sleep(15 * attempt)
+                continue
+            break
+        if response is None:
+            continue
+        if response.status_code == 404 or response.status_code in RETRYABLE_STATUS:
+            problems.append(f"{model}: HTTP {response.status_code}")
+            print(f"[warn] {model} unavailable (HTTP {response.status_code}); trying the next model")
+            continue
+        if response.status_code >= 400:
+            raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:1000]}")
+        MODEL_USED["name"] = model
+        return response
+    raise RuntimeError("no Gemini model answered: " + "; ".join(problems[-4:]))
+
+
+def gemini_json(prompt: str, cfg: dict) -> dict:
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -46,22 +86,7 @@ def gemini_json(prompt: str, cfg: dict) -> dict:
             "responseMimeType": "application/json",
         },
     }
-    for attempt in range(1, HTTP_ATTEMPTS + 1):
-        try:
-            response = requests.post(endpoint, params={"key": api_key}, json=payload, timeout=(20, 240))
-        except requests.RequestException as exc:
-            if attempt == HTTP_ATTEMPTS:
-                raise RuntimeError(f"Gemini request failed: {exc}") from exc
-            print(f"[warn] Gemini request error ({exc}); retrying in {15 * attempt}s")
-            time.sleep(15 * attempt)
-            continue
-        if response.status_code in RETRYABLE_STATUS and attempt < HTTP_ATTEMPTS:
-            print(f"[warn] Gemini HTTP {response.status_code}; retrying in {15 * attempt}s")
-            time.sleep(15 * attempt)
-            continue
-        break
-    if response.status_code >= 400:
-        raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:1000]}")
+    response = post_gemini(payload, cfg)
     body = response.json()
     candidates = body.get("candidates") or []
     # Content problems are ValueErrors so generate_episode() retries them with feedback.
@@ -70,7 +95,8 @@ def gemini_json(prompt: str, cfg: dict) -> dict:
     if candidates[0].get("finishReason") == "MAX_TOKENS":
         raise ValueError("response was cut off at the output token limit; keep turns and study notes more concise")
     parts = candidates[0].get("content", {}).get("parts", [])
-    text = "".join(str(part.get("text", "")) for part in parts).strip()
+    # Thinking models may return their reasoning as separate "thought" parts; keep the answer only.
+    text = "".join(str(part.get("text", "")) for part in parts if not part.get("thought")).strip()
     if not text:
         raise ValueError("Gemini returned an empty response")
     text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -171,6 +197,21 @@ The previous attempt was rejected by the validator: {feedback}
 Write a corrected, complete episode that satisfies every requirement."""
 
 
+def length_plan(lang: dict, cfg: dict) -> str:
+    """Concrete volume targets. Models badly under-estimate how much text fills 10+ minutes of audio."""
+    lo = max(int(cfg["episode"]["minimum_utterances"]), 52)
+    hi = min(int(cfg["episode"]["maximum_utterances"]), 64)
+    if lang["code"] in {"zh-CN", "ko-KR"}:
+        target_turn = "35 to 70 characters"
+    else:
+        target_turn = "100 to 180 characters (two or three full sentences)"
+    return f"""Length plan (the finished audio must run {cfg['episode']['minimum_seconds'] // 60} to {cfg['episode']['maximum_seconds'] // 60} minutes, so this volume is required):
+- Write {lo} to {hi} utterances in total.
+- {lang['name']} turns: {target_turn} each. Japanese turns: 35 to 70 characters each. Avoid one-word or one-phrase turns.
+- Structure: opening chat (about 6 turns), each news story (about 13 turns each), review with slow repeats
+  (about 10 turns), aftertalk (about 6 turns)."""
+
+
 def materials_contract(lang: dict, cfg: dict) -> str:
     """Prompt section shared by every edition type: on-screen study materials and the JSON shape."""
     learning = cfg["learning"]
@@ -235,6 +276,8 @@ Hard requirements:
 - Avoid stiff textbook dialogue. Prefer natural modern spoken language without slang that is too niche.
 - Political or policy content, if present, must remain descriptive and neutral. No endorsements, rankings or persuasion.
 
+{length_plan(lang, cfg)}
+
 {materials_contract(lang, cfg)}
 
 Stories:
@@ -282,7 +325,10 @@ def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg
     lo = int(cfg["episode"]["minimum_utterances"])
     hi = int(cfg["episode"]["maximum_utterances"])
     if not lo <= len(utterances) <= hi:
-        raise ValueError(f"utterance count {len(utterances)} outside {lo}..{hi}")
+        raise ValueError(
+            f"utterance count {len(utterances)} outside {lo}..{hi}; "
+            + ("write more turns following the length plan" if len(utterances) < lo else "merge or cut turns")
+        )
     max_slow = int(cfg["learning"]["max_slow_utterances"])
     allowed_languages = {"ja-JP", lang["code"]}
     cleaned: list[dict] = []
@@ -327,7 +373,12 @@ def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg
     minimum = int(cfg["episode"]["minimum_seconds"])
     maximum = int(cfg["episode"]["maximum_seconds"])
     if not minimum <= estimate <= maximum:
-        raise ValueError(f"estimated duration {estimate:.1f}s outside {minimum}..{maximum}s")
+        target = (minimum + maximum) / 2
+        if estimate < minimum:
+            advice = f"the script is about {round((1 - estimate / target) * 100)}% too short: add turns and make each turn longer, following the length plan"
+        else:
+            advice = f"the script is about {round((estimate / target - 1) * 100)}% too long: shorten turns"
+        raise ValueError(f"estimated duration {estimate:.0f}s outside {minimum}..{maximum}s; {advice}")
     title = clean(str(data.get("title", f"Journey Talk {lang['japanese_name']}")))
     return {
         "episode_date": date,
@@ -494,7 +545,7 @@ def main() -> int:
 
     manifest = {
         "episode_date": args.date,
-        "model": os.getenv("GEMINI_MODEL", "").strip() or cfg["provider"]["model"],
+        "model": None,
         "stories": [{"source": x["source"], "title": x["title"], "url": x["url"]} for x in selected],
         "episodes": [],
         "failed": [],
@@ -522,6 +573,7 @@ def main() -> int:
         )
         print(f"[script] {lang['japanese_name']}: {json_path}")
 
+    manifest["model"] = MODEL_USED.get("name")
     (day / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
