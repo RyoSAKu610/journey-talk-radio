@@ -27,7 +27,7 @@ const langLabel = (ep) => `${FLAGS[baseSlug(ep.slug)] || '🌐'} ${esc(ep.japane
 
 /* ---------- persistent learner state (per browser) ---------- */
 const store = (() => {
-  const blank = () => ({ lang: 'all', progress: {}, days: [], words: {}, prefs: { translate: true, blind: false, follow: true, rate: 1 } });
+  const blank = () => ({ lang: 'all', progress: {}, days: [], words: {}, deleted: {}, prefs: { translate: true, blind: false, follow: true, rate: 1 } });
   let state = blank();
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
@@ -157,6 +157,7 @@ function topbar(current) {
       <nav class="nav">
         <a href="#/" ${current === 'home' ? 'aria-current="page"' : ''}>エピソード</a>
         <a href="#/words" ${current === 'words' ? 'aria-current="page"' : ''}>単語帳${due ? ` (${due})` : ''}</a>
+        <a href="#/sync" ${current === 'sync' ? 'aria-current="page"' : ''} aria-label="端末間の引き継ぎ">🔄</a>
       </nav>
     </div>`;
 }
@@ -424,9 +425,15 @@ function addWord(ep, item) {
     term: item.term, reading: item.reading || '', meaning_ja: item.meaning_ja,
     example: item.example || '', example_ja: item.example_ja || '',
     slug: baseSlug(ep.slug), language: ep.language, japanese_name: ep.japanese_name,
-    source: `${ep.date}/${ep.slug}`, box: 0, due: localDay(),
+    source: `${ep.date}/${ep.slug}`, box: 0, due: localDay(), updated: Date.now(),
   };
+  delete store.state.deleted[id];
   return true;
+}
+// Deletions are remembered (with a time) so a sync from another device does not bring the word back.
+function removeWord(id) {
+  delete store.state.words[id];
+  store.state.deleted[id] = Date.now();
 }
 
 function setupVocab(ep, vocab) {
@@ -434,7 +441,7 @@ function setupVocab(ep, vocab) {
   app.querySelectorAll('[data-word]').forEach((btn) => btn.addEventListener('click', () => {
     const item = vocab[Number(btn.dataset.word)];
     const id = wordId(ep, item);
-    if (store.state.words[id]) delete store.state.words[id]; else addWord(ep, item);
+    if (store.state.words[id]) removeWord(id); else addWord(ep, item);
     store.save();
     refresh(btn, Boolean(store.state.words[id]));
   }));
@@ -488,23 +495,26 @@ function setupOffline(rel, entry, player) {
   const slot = document.getElementById('offline-slot');
   if (!slot || !offlineSupported || !rel) return;
   const draw = async () => {
-    if (await isSaved(rel)) {
-      slot.innerHTML = '<span class="tag badge-done">📥 オフライン保存済み</span> <button class="btn" id="off-del">削除</button>';
-      document.getElementById('off-del').addEventListener('click', async () => { await removeOffline(rel); player.swapSource(httpUrl(entry.audio_url)); draw(); });
+    const saved = await isSaved(rel);
+    if (!slot.isConnected) return; // the learner already left this page
+    if (saved) {
+      slot.innerHTML = '<span class="tag badge-done">📥 オフライン保存済み</span> <button class="btn" data-off="delete">削除</button>';
+      slot.querySelector('[data-off="delete"]').addEventListener('click', async () => { await removeOffline(rel); player.swapSource(httpUrl(entry.audio_url)); draw(); });
       return;
     }
     if (!navigator.onLine) { slot.innerHTML = '<span class="muted">📴 この回は未保存のため、オンライン時に再生できます</span>'; return; }
     let available = false;
     try { available = (await fetch(rel, { method: 'HEAD', cache: 'no-store' })).ok; } catch (_) { /* treat as unavailable */ }
+    if (!slot.isConnected) return;
     if (!available) { slot.innerHTML = '<span class="muted" style="font-size:.82rem">オフライン保存は公開から3日以内の回でできます</span>'; return; }
-    slot.innerHTML = `<button class="btn" id="off-save">⬇ オフライン保存${mb(entry.offline_bytes)}</button>`;
-    const button = document.getElementById('off-save');
+    slot.innerHTML = `<button class="btn" data-off="save">⬇ オフライン保存${mb(entry.offline_bytes)}</button>`;
+    const button = slot.querySelector('[data-off="save"]');
     button.addEventListener('click', async () => {
       button.disabled = true;
       button.textContent = '保存中…';
       try {
         await saveOffline(rel, (pct) => { button.textContent = `保存中… ${pct}%`; }, ['episodes.json', entry.detail_url]);
-        player.swapSource(rel);
+        if (slot.isConnected) player.swapSource(rel);
         toast('📥 保存しました。電波がなくても聴けます');
       } catch (err) {
         toast(`保存できませんでした: ${err.message || err}`);
@@ -866,7 +876,7 @@ function renderWords() {
     ${langs.size > 1 ? `<p class="muted" style="font-size:.8rem">収録言語: ${[...langs.values()].map(esc).join('・')}</p>` : ''}`;
 
   app.querySelectorAll('[data-del]').forEach((btn) => btn.addEventListener('click', () => {
-    delete store.state.words[btn.dataset.del];
+    removeWord(btn.dataset.del);
     store.save();
     renderWords();
   }));
@@ -911,6 +921,7 @@ function review(queue) {
     const w = queue[i];
     w.box = good ? Math.min(REVIEW_DAYS.length - 1, (w.box || 0) + 1) : 0;
     w.due = addDays(good ? REVIEW_DAYS[w.box] : 0);
+    w.updated = Date.now();
     if (!good) queue.push(w);
     store.save();
     i += 1;
@@ -933,12 +944,166 @@ function exportTsv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+/* ---------- moving progress between devices (no server: link or file) ---------- */
+// Merge another device's learner state into ours. Union for history, max for scores,
+// newest edit wins per word, and remembered deletions win over older copies.
+function mergeStates(local, incoming) {
+  const out = JSON.parse(JSON.stringify(local));
+  const other = incoming && typeof incoming === 'object' ? incoming : {};
+  out.days = [...new Set([...(out.days || []), ...(Array.isArray(other.days) ? other.days : [])])]
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().slice(-400);
+  out.progress = out.progress || {};
+  Object.entries(other.progress || {}).forEach(([key, theirs]) => {
+    if (!theirs || typeof theirs !== 'object') return;
+    const mine = out.progress[key] || { buckets: [], done: false, pos: 0, quiz: null };
+    const speak = { ...(mine.speak || {}) };
+    Object.entries(theirs.speak || {}).forEach(([i, score]) => { speak[i] = Math.max(Number(speak[i]) || 0, Number(score) || 0); });
+    const quizzes = [mine.quiz, theirs.quiz].filter((q) => q && typeof q === 'object');
+    out.progress[key] = {
+      ...mine,
+      buckets: [...new Set([...(mine.buckets || []), ...(Array.isArray(theirs.buckets) ? theirs.buckets : [])])].filter(Number.isInteger),
+      done: Boolean(mine.done || theirs.done),
+      pos: Math.max(Number(mine.pos) || 0, Number(theirs.pos) || 0),
+      quiz: quizzes.length ? { best: Math.max(...quizzes.map((q) => Number(q.best) || 0)), total: Math.max(...quizzes.map((q) => Number(q.total) || 0)) } : null,
+      speak,
+    };
+  });
+  out.deleted = { ...(out.deleted || {}) };
+  Object.entries(other.deleted || {}).forEach(([id, at]) => { out.deleted[id] = Math.max(Number(out.deleted[id]) || 0, Number(at) || 0); });
+  out.words = { ...(out.words || {}) };
+  Object.entries(other.words || {}).forEach(([id, theirs]) => {
+    if (!theirs || typeof theirs !== 'object' || typeof theirs.term !== 'string') return;
+    const mine = out.words[id];
+    const newer = !mine || (Number(theirs.updated) || 0) > (Number(mine.updated) || 0)
+      || ((Number(theirs.updated) || 0) === (Number(mine.updated) || 0) && (theirs.box || 0) > (mine.box || 0));
+    if (newer) out.words[id] = theirs;
+  });
+  Object.entries(out.deleted).forEach(([id, at]) => {
+    if (out.words[id] && (Number(out.words[id].updated) || 0) <= at) delete out.words[id];
+  });
+  return out;
+}
+
+const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64url = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+const syncPayload = () => ({ v: 1, days: store.state.days, progress: store.state.progress, words: store.state.words, deleted: store.state.deleted });
+
+async function encodeTransfer(data) {
+  const raw = new TextEncoder().encode(JSON.stringify(data));
+  if (typeof CompressionStream === 'undefined') return `0.${b64url(raw)}`;
+  const zipped = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < zipped.length; i += 0x8000) binary += String.fromCharCode(...zipped.subarray(i, i + 0x8000));
+  return `1.${btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+}
+async function decodeTransfer(code) {
+  const [kind, body] = String(code).split('.', 2);
+  let bytes = fromB64url(body || '');
+  if (kind === '1') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+  else if (kind !== '0') throw new Error('unknown format');
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function summarize(data) {
+  const progress = Object.values(data.progress || {});
+  return `単語 ${Object.keys(data.words || {}).length}語 · 学習日 ${(data.days || []).length}日 · 聴了 ${progress.filter((x) => x && x.done).length}回`;
+}
+function checkLearnerData(data) {
+  if (!data || typeof data !== 'object' || (data.v !== 1 && !data.words)) throw new Error('Journey Talk の学習データではありません');
+  return data;
+}
+function applyIncoming(data) {
+  checkLearnerData(data);
+  const merged = mergeStates(store.state, data);
+  ['days', 'progress', 'words', 'deleted'].forEach((key) => { store.state[key] = merged[key]; });
+  store.save();
+}
+
+async function renderSync(code) {
+  let incoming = null;
+  let problem = '';
+  if (code) {
+    try { incoming = await decodeTransfer(code); } catch (err) { problem = `リンクを読み込めませんでした（${esc(err.message || err)}）。リンク全体がコピーされているか確認してください。`; }
+  }
+  app.innerHTML = `
+    ${topbar('sync')}
+    <h1>端末間の引き継ぎ</h1>
+    <p class="sub">学習記録（聴了・クイズ・発音スコア・連続日数・単語帳）は端末ごとに保存されています。リンクかファイルで別の端末に移し、両方の記録を統合できます。</p>
+    <div class="stack">
+    ${incoming ? `
+      <div class="q">
+        <p>📥 別の端末から届いたデータ</p>
+        <div class="muted">${esc(summarize(incoming))}</div>
+        <div class="muted" style="font-size:.85rem;margin-top:4px">この端末: ${esc(summarize(store.state))}</div>
+        <div class="toolbar" style="margin-top:10px"><button class="btn primary" id="merge">この端末のデータと統合する</button> <a class="btn" href="#/sync">やめる</a></div>
+      </div>` : ''}
+    ${problem ? `<div class="empty">${problem}</div>` : ''}
+    <div class="q">
+      <p>① この端末 → 別の端末</p>
+      <div class="muted" style="font-size:.88rem">リンクを作って、スマホとPCのどちらかへ送ります（自分宛てのメール・メモ・LINEなど）。開いた端末で「統合する」を押すと反映されます。</div>
+      <div class="toolbar" style="margin-top:10px">
+        <button class="btn primary" id="make-link">🔗 引き継ぎリンクを作る</button>
+        <button class="btn" id="export-file">💾 ファイルに保存</button>
+      </div>
+      <div id="link-out"></div>
+    </div>
+    <div class="q">
+      <p>② ファイルから読み込む</p>
+      <input type="file" id="import-file" accept="application/json,.json">
+    </div>
+    </div>
+    <p class="muted" style="font-size:.82rem">両方の端末で一度ずつ行うと、記録が完全にそろいます。データはリンクの「#」以降に入っているだけで、サーバーには送信されません。</p>`;
+
+  const merge = document.getElementById('merge');
+  if (merge) merge.addEventListener('click', () => {
+    try {
+      applyIncoming(incoming);
+      toast('🔄 統合しました');
+      location.hash = '#/';
+    } catch (err) { toast(err.message || String(err)); }
+  });
+  document.getElementById('make-link').addEventListener('click', async () => {
+    const link = `${location.href.split('#')[0]}#/sync/${await encodeTransfer(syncPayload())}`;
+    const out = document.getElementById('link-out');
+    out.innerHTML = `
+      <textarea readonly rows="3" style="width:100%;margin-top:10px;font-size:.75rem">${esc(link)}</textarea>
+      <div class="toolbar"><button class="btn" id="copy-link">コピー</button>${navigator.share ? '<button class="btn" id="share-link">共有…</button>' : ''}</div>
+      <div class="muted" style="font-size:.8rem">${link.length.toLocaleString()}文字。長すぎて送れない場合は「ファイルに保存」を使ってください。</div>`;
+    document.getElementById('copy-link').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(link); toast('コピーしました'); } catch (_) { out.querySelector('textarea').select(); }
+    });
+    const share = document.getElementById('share-link');
+    if (share) share.addEventListener('click', () => navigator.share({ title: 'Journey Talk 学習データ', url: link }).catch(() => {}));
+  });
+  document.getElementById('export-file').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(syncPayload())], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `journey-talk-progress-${localDay()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  document.getElementById('import-file').addEventListener('change', async (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      const data = checkLearnerData(JSON.parse(await file.text()));
+      if (!window.confirm(`このデータを統合しますか？\n${summarize(data)}`)) return;
+      applyIncoming(data);
+      toast('🔄 統合しました');
+      renderSync('');
+    } catch (err) { toast(`読み込めませんでした: ${err.message || err}`); }
+  });
+}
+
 /* ---------- router ---------- */
 async function route() {
   if (teardown) { teardown(); teardown = null; }
   const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   try {
     if (parts[0] === 'words') renderWords();
+    else if (parts[0] === 'sync') await renderSync(parts.slice(1).join('/'));
     else if (parts.length === 2) await renderEpisode(parts[0], parts[1]);
     else await renderHome();
   } catch (err) {

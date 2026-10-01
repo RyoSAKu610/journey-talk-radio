@@ -265,11 +265,25 @@ Repository secret に `GEMINI_API_KEY`（[Google AI Studio](https://aistudio.goo
 `https://<owner>.github.io/<repo>/` で、スマホ向けの学習プレーヤーが使えます。
 
 - 音声と同期するスクリプト（再生中の文をハイライト、タップでその文へ移動）
+- **カラオケ表示**: Edge TTS の WordBoundary から、いま発音している単語をハイライト
 - **🔁 1文リピート**（シャドーイング用）、前後の文へ移動、再生速度 0.75〜1.25×
+- **🎤 発音チェック**: ブラウザの音声認識（Web Speech API）で読み上げを聞き取り、お手本と比較して点数と聞き取れなかった語を表示（Chrome / Edge / Safari。非対応ブラウザではボタン非表示）
 - **ブラインドモード**: 対象言語の文をぼかし、聴き終えた文から表示
 - 単語帳（間隔反復: 1→3→7→14→30日）、Anki用TSV書き出し
 - クイズ、聴了記録、連続学習日数（ブラウザのlocalStorageに保存）
+- **⬇ オフライン保存（PWA）**: 公開から3日以内の回を端末に保存し、電波がなくても同期スクリプト・シーク・1文リピートつきで再生。ホーム画面に追加してアプリとして使用可
+- **🔄 端末間の引き継ぎ**: 学習記録を引き継ぎリンクかファイルで別端末へ移して統合（サーバー不要。データはURLの `#` 以降に入り送信されない）
 - キーボード操作（Space / ← → / R）とロック画面の操作（Media Session）
+
+### 週末まとめ回
+
+日曜日（日本時間）は、各言語でその週に出た単語・表現だけを使った復習回（`<slug>-weekly`）も生成します。新しい場面での使い方、「〇〇って何て言う？」の練習、🐢ゆっくり復唱で構成されます。手動実行時は `weekly_review` を有効にすると任意の日に作れます。表現が少ない週や生成に失敗した言語はスキップし、通常回の公開は止めません。
+
+### オフライン用音声とカバー画像
+
+- render は192kbpsの本編に加えて、64kbpsモノラルの軽量版（`*.offline.mp3`）を同じタイムラインで出力します。軽量版もReleaseに置かれ、デプロイ時に直近3日分だけをPagesへ配置します（gitにはコミットしません）。Release上のMP3はCORS非対応で、キャッシュしてもシークできないため、同一オリジンの軽量版を使います。
+- カバー画像（3000×3000）とアプリアイコンは `scripts/make_covers.py` で生成し、`docs/covers/`・`docs/icons/` にコミット済みです。デザインや言語を変えたときだけ再生成してください:
+  `python scripts/make_covers.py --font /path/to/NotoSansCJK.ttc`
 
 ### 毎日の成果物
 
@@ -283,7 +297,8 @@ docs/episodes.json                                  エピソード一覧
 docs/episodes/YYYY-MM-DD/{slug}.json                プレーヤー用データ（同期スクリプト・単語・クイズ）
 docs/episodes/YYYY-MM-DD/{slug}.vtt                 WebVTT字幕（podcast:transcript）
 docs/feed.xml                                       全言語のPodcast RSS
-docs/feeds/{slug}.xml                               言語別のPodcast RSS
+docs/feeds/{slug}.xml                               言語別のPodcast RSS（カバー画像つき）
+docs/offline/YYYY-MM-DD/*.offline.mp3               オフライン保存用（デプロイ時のみ配置）
 ```
 
 Podcastアプリでは、学びたい言語の `feeds/{slug}.xml` だけを購読できます。各エピソードの説明欄には要約・今日の表現・学習ページへのリンクが入り、対応アプリでは字幕（transcript）も表示されます。
@@ -294,6 +309,6 @@ Podcastアプリでは、学びたい言語の `feeds/{slug}.xml` だけを購�
 python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
 ```
 
-台本・教材の検証、再試行と部分失敗、WebVTT、言語別RSS、シャドーイング用ポーズの上限を検査します。
+台本・教材の検証、再試行と部分失敗、週末まとめ回、単語タイミング（UTF-16範囲）、オフライン用音声、WebVTT、言語別RSSとカバー画像、シャドーイング用ポーズの上限を検査します。
 
 旧 `daily-radio.yml`（固定カタログ版・1本の多言語MP3）は別系統として残っています。
