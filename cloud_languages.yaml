@@ -7,8 +7,23 @@ episode:
   minimum_utterances: 44
   maximum_utterances: 68
   temperature: 0.35
-  max_output_tokens: 8192
+  max_output_tokens: 16384
   stories: 3
+  generation_attempts: 3
+  learner_level: "CEFR B1"
+
+learning:
+  vocabulary_min: 5
+  vocabulary_max: 10
+  quiz_min: 3
+  quiz_max: 5
+  max_slow_utterances: 10
+  slow_rate: "-25%"
+  shadowing_pause_ms: [1200, 2000]
+
+hosts:
+  MC_F: "ミナ"
+  MC_M: "レン"
 
 qa:
   max_silence_seconds: 3.0

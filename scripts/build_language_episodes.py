@@ -4,7 +4,9 @@ import argparse
 import html
 import json
 import os
+import random
 import re
+import time
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +18,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+HTTP_ATTEMPTS = 4
 
 
 def clean(value: str) -> str:
@@ -42,26 +46,45 @@ def gemini_json(prompt: str, cfg: dict) -> dict:
             "responseMimeType": "application/json",
         },
     }
-    response = requests.post(endpoint, params={"key": api_key}, json=payload, timeout=(20, 240))
+    for attempt in range(1, HTTP_ATTEMPTS + 1):
+        try:
+            response = requests.post(endpoint, params={"key": api_key}, json=payload, timeout=(20, 240))
+        except requests.RequestException as exc:
+            if attempt == HTTP_ATTEMPTS:
+                raise RuntimeError(f"Gemini request failed: {exc}") from exc
+            print(f"[warn] Gemini request error ({exc}); retrying in {15 * attempt}s")
+            time.sleep(15 * attempt)
+            continue
+        if response.status_code in RETRYABLE_STATUS and attempt < HTTP_ATTEMPTS:
+            print(f"[warn] Gemini HTTP {response.status_code}; retrying in {15 * attempt}s")
+            time.sleep(15 * attempt)
+            continue
+        break
     if response.status_code >= 400:
         raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:1000]}")
     body = response.json()
     candidates = body.get("candidates") or []
+    # Content problems are ValueErrors so generate_episode() retries them with feedback.
     if not candidates:
-        raise RuntimeError(f"Gemini returned no candidates: {json.dumps(body)[:1000]}")
+        raise ValueError(f"Gemini returned no candidates: {json.dumps(body)[:1000]}")
+    if candidates[0].get("finishReason") == "MAX_TOKENS":
+        raise ValueError("response was cut off at the output token limit; keep turns and study notes more concise")
     parts = candidates[0].get("content", {}).get("parts", [])
     text = "".join(str(part.get("text", "")) for part in parts).strip()
     if not text:
-        raise RuntimeError("Gemini returned an empty response")
+        raise ValueError("Gemini returned an empty response")
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
     try:
-        return json.loads(text)
+        result = json.loads(text)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, flags=re.S)
         if not match:
             raise
-        return json.loads(match.group(0))
+        result = json.loads(match.group(0))
+    if not isinstance(result, dict):
+        raise ValueError("Gemini response must be a JSON object")
+    return result
 
 
 def collect_news(cfg: dict) -> list[dict]:
@@ -139,14 +162,24 @@ Candidates:
         return news[:required]
 
 
-def episode_prompt(date: str, lang: dict, stories: list[dict], cfg: dict) -> str:
+def episode_prompt(date: str, lang: dict, stories: list[dict], cfg: dict, feedback: str = "") -> str:
     minimum = cfg["episode"]["minimum_seconds"] // 60
     maximum = cfg["episode"]["maximum_seconds"] // 60
+    level = cfg["episode"].get("learner_level", "CEFR B1")
+    hosts = cfg.get("hosts", {})
+    learning = cfg["learning"]
+    retry_note = ""
+    if feedback:
+        retry_note = f"""
+
+The previous attempt was rejected by the validator: {feedback}
+Write a corrected, complete episode that satisfies every requirement."""
     return f"""
 Write the {lang['japanese_name']} edition of Journey Talk for {date}.
 
-This is a relaxed daily language-learning podcast with two hosts, MC_F and MC_M.
-The listener is Japanese and wants practical spoken {lang['name']} ({lang['code']}).
+This is a relaxed daily language-learning podcast with two regular hosts:
+MC_F is {hosts.get('MC_F', 'Mina')} (female) and MC_M is {hosts.get('MC_M', 'Ren')} (male). They may call each other by name.
+The listener is Japanese, around {level} in {lang['name']}, and wants practical spoken {lang['name']} ({lang['code']}).
 Use Japanese (ja-JP) only for short navigation, explanations and recap.
 
 Hard requirements:
@@ -157,25 +190,51 @@ Hard requirements:
 - Alternate speakers naturally. Both hosts must speak in both Japanese navigation and the target language across the episode.
 - Target-language speech should be the majority of the episode.
 - Keep individual turns short enough to sound conversational, usually one to three spoken sentences.
+- Match the listener level: mostly high-frequency words and clear sentence structure, with a few stretch expressions explained in Japanese.
 - Explain useful vocabulary or nuance in Japanese after important target-language exchanges.
-- Near the end include a review section with several useful expressions from the episode.
+- Near the end include a review section with several useful expressions from the episode. For each key expression, say the
+  target-language sentence at natural speed, then repeat the same sentence once more as a separate utterance with "slow": true
+  so the listener can shadow it. Mark at most {learning['max_slow_utterances']} utterances as slow, and only target-language ones.
 - Finish with a short aftertalk / trivia exchange: a culturally useful filler, reaction, everyday phrase, TV/drama-like expression or conversation habit that the listener could actually use.
 - No markdown or URLs inside spoken text.
 - Avoid stiff textbook dialogue. Prefer natural modern spoken language without slang that is too niche.
 - Political or policy content, if present, must remain descriptive and neutral. No endorsements, rankings or persuasion.
 
+Learning materials for the companion web player (these are shown on screen, not spoken):
+- Every {lang['code']} utterance must include "ja": a natural Japanese translation of that utterance. Japanese utterances have no "ja".
+- "summary_ja": two or three Japanese sentences telling the listener what this episode covers and what they will be able to say.
+- "vocabulary": {learning['vocabulary_min']} to {learning['vocabulary_max']} useful words or phrases that actually appear in the {lang['code']} utterances.
+  Each item has "term", "reading" (pronunciation help for a Japanese learner: pinyin with tone marks for Chinese,
+  Revised Romanization for Korean, the word with a stress mark for Russian, otherwise an empty string), "meaning_ja",
+  "example" (a {lang['code']} sentence from the episode that contains the term) and "example_ja".
+- "quiz": {learning['quiz_min']} to {learning['quiz_max']} listening-comprehension questions written in Japanese about what the hosts said.
+  Each item has "question_ja", "choices" (three or four short Japanese options), "answer" (zero-based index of the correct
+  choice) and "explanation_ja".
+
 Return JSON only:
 {{
   "title": "short Japanese title",
+  "summary_ja": "...",
   "utterances": [
     {{"speaker":"MC_F","language":"ja-JP","text":"..."}},
-    {{"speaker":"MC_M","language":"{lang['code']}","text":"..."}}
+    {{"speaker":"MC_M","language":"{lang['code']}","text":"...","ja":"..."}},
+    {{"speaker":"MC_F","language":"{lang['code']}","text":"...","ja":"...","slow":true}}
+  ],
+  "vocabulary": [
+    {{"term":"...","reading":"...","meaning_ja":"...","example":"...","example_ja":"..."}}
+  ],
+  "quiz": [
+    {{"question_ja":"...","choices":["...","...","..."],"answer":0,"explanation_ja":"..."}}
   ]
 }}
 
 Stories:
-{json.dumps(stories, ensure_ascii=False)}
+{json.dumps(stories, ensure_ascii=False)}{retry_note}
 """.strip()
+
+
+SLOW_FACTOR = 1.33
+SHADOWING_SECONDS = 1.6
 
 
 def estimate_seconds(utterances: list[dict]) -> float:
@@ -185,15 +244,26 @@ def estimate_seconds(utterances: list[dict]) -> float:
         lang = utterance["language"]
         visible = len(re.sub(r"\s+", "", text))
         if lang in {"ja-JP", "zh-CN", "ko-KR"}:
-            total += visible / 5.0
+            spoken = visible / 5.0
         else:
-            total += len(text) / 13.0
-        total += 0.55
+            spoken = len(text) / 13.0
+        if utterance.get("slow"):
+            spoken = spoken * SLOW_FACTOR + SHADOWING_SECONDS
+        total += spoken + 0.55
     return total
 
 
 def normalized_text(value: str) -> str:
     return unicodedata.normalize("NFKC", value).strip()
+
+
+def clean_field(value: object, limit: int = 400) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = normalized_text(clean(value))
+    if re.search(r"https?://|www\.", text, flags=re.I):
+        return ""
+    return text[:limit]
 
 
 def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg: dict) -> dict:
@@ -204,12 +274,16 @@ def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg
     hi = int(cfg["episode"]["maximum_utterances"])
     if not lo <= len(utterances) <= hi:
         raise ValueError(f"utterance count {len(utterances)} outside {lo}..{hi}")
+    max_slow = int(cfg["learning"]["max_slow_utterances"])
     allowed_languages = {"ja-JP", lang["code"]}
     cleaned: list[dict] = []
     speakers: set[str] = set()
     languages: set[str] = set()
     target_chars = 0
+    slow_count = 0
     for index, utterance in enumerate(utterances):
+        if not isinstance(utterance, dict):
+            raise ValueError(f"utterance {index} is not an object")
         speaker = str(utterance.get("speaker", ""))
         language = str(utterance.get("language", ""))
         text = normalized_text(clean(str(utterance.get("text", ""))))
@@ -221,7 +295,15 @@ def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg
             raise ValueError(f"empty text at utterance {index}")
         if re.search(r"https?://|www\.", text, flags=re.I):
             raise ValueError(f"spoken URL at utterance {index}")
-        cleaned.append({"speaker": speaker, "language": language, "text": text})
+        item = {"speaker": speaker, "language": language, "text": text}
+        if language == lang["code"]:
+            translation = clean_field(utterance.get("ja"))
+            if translation:
+                item["ja"] = translation
+            if utterance.get("slow") is True and slow_count < max_slow:
+                item["slow"] = True
+                slow_count += 1
+        cleaned.append(item)
         speakers.add(speaker)
         languages.add(language)
         if language == lang["code"]:
@@ -251,10 +333,138 @@ def validate_episode(data: dict, date: str, lang: dict, stories: list[dict], cfg
     }
 
 
+def empty_learning() -> dict:
+    return {"summary_ja": "", "vocabulary": [], "quiz": []}
+
+
+def validate_learning(data: dict, episode: dict, cfg: dict) -> dict:
+    """Validate the on-screen study materials that accompany an already-valid spoken episode."""
+    learning = cfg["learning"]
+    target = [x for x in episode["utterances"] if x["language"] == episode["language"]]
+    missing = sum(1 for x in target if not x.get("ja"))
+    if missing > len(target) // 10:
+        raise ValueError(f"Japanese translation missing for {missing} of {len(target)} target-language utterances")
+
+    vocabulary: list[dict] = []
+    seen_terms: set[str] = set()
+    for raw in data.get("vocabulary") or []:
+        if not isinstance(raw, dict):
+            continue
+        term = clean_field(raw.get("term"), 120)
+        meaning = clean_field(raw.get("meaning_ja"), 200)
+        key = term.casefold()
+        if not term or not meaning or key in seen_terms:
+            continue
+        seen_terms.add(key)
+        vocabulary.append(
+            {
+                "term": term,
+                "reading": clean_field(raw.get("reading"), 160),
+                "meaning_ja": meaning,
+                "example": clean_field(raw.get("example"), 300),
+                "example_ja": clean_field(raw.get("example_ja"), 300),
+            }
+        )
+    if len(vocabulary) < int(learning["vocabulary_min"]):
+        raise ValueError(f"vocabulary has {len(vocabulary)} usable items, need {learning['vocabulary_min']}")
+
+    quiz: list[dict] = []
+    for index, raw in enumerate(data.get("quiz") or []):
+        if not isinstance(raw, dict):
+            continue
+        question = clean_field(raw.get("question_ja"), 300)
+        choices = [clean_field(x, 120) for x in raw.get("choices") or []]
+        answer = raw.get("answer")
+        if isinstance(answer, str) and answer.strip().isdigit():
+            answer = int(answer.strip())
+        if (
+            not question
+            or not 3 <= len(choices) <= 4
+            or not all(choices)
+            or len(set(choices)) != len(choices)
+            or isinstance(answer, bool)
+            or not isinstance(answer, int)
+            or not 0 <= answer < len(choices)
+        ):
+            continue
+        # Models tend to put the right answer first; shuffle deterministically so the position carries no hint.
+        correct = choices[answer]
+        random.Random(f"{episode['episode_date']}:{episode['slug']}:{index}").shuffle(choices)
+        quiz.append(
+            {
+                "question_ja": question,
+                "choices": choices,
+                "answer": choices.index(correct),
+                "explanation_ja": clean_field(raw.get("explanation_ja"), 300),
+            }
+        )
+    if len(quiz) < int(learning["quiz_min"]):
+        raise ValueError(f"quiz has {len(quiz)} usable questions, need {learning['quiz_min']}")
+
+    return {
+        "summary_ja": clean_field(data.get("summary_ja"), 400),
+        "vocabulary": vocabulary[: int(learning["vocabulary_max"])],
+        "quiz": quiz[: int(learning["quiz_max"])],
+    }
+
+
+def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict) -> dict:
+    """Ask Gemini for one edition, feeding validator errors back into the retry prompt.
+
+    A spoken script that passes every audio contract is never thrown away just because the
+    study materials were incomplete: after the last attempt it is published without them.
+    """
+    attempts = max(1, int(cfg["episode"].get("generation_attempts", 3)))
+    feedback = ""
+    spoken_only: dict | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            raw = gemini_json(episode_prompt(date, lang, stories, cfg, feedback), cfg)
+            episode = validate_episode(raw, date, lang, stories, cfg)
+        except ValueError as exc:
+            feedback = str(exc)
+            print(f"[warn] {lang['slug']} attempt {attempt}/{attempts} rejected: {exc}")
+            continue
+        try:
+            episode.update(validate_learning(raw, episode, cfg))
+            return episode
+        except ValueError as exc:
+            feedback = str(exc)
+            spoken_only = spoken_only or episode
+            print(f"[warn] {lang['slug']} attempt {attempt}/{attempts} study materials rejected: {exc}")
+    if spoken_only is not None:
+        print(f"[warn] {lang['slug']}: publishing audio script without study materials")
+        spoken_only.update(empty_learning())
+        return spoken_only
+    raise RuntimeError(f"{lang['slug']}: no valid episode after {attempts} attempts (last error: {feedback})")
+
+
 def write_markdown(episode: dict, path: Path) -> None:
     rows = [f"# {episode['title']}", ""]
+    if episode.get("summary_ja"):
+        rows += [episode["summary_ja"], ""]
+    rows += ["## Script", ""]
     for utterance in episode["utterances"]:
-        rows.append(f"**{utterance['speaker']} [{utterance['language']}]**  {utterance['text']}")
+        slow = " 🐢" if utterance.get("slow") else ""
+        rows.append(f"**{utterance['speaker']} [{utterance['language']}]{slow}**  {utterance['text']}")
+        if utterance.get("ja"):
+            rows.append(f"> {utterance['ja']}")
+        rows.append("")
+    if episode.get("vocabulary"):
+        rows += ["## Vocabulary", "", "| 表現 | 読み | 意味 | 例文 |", "| --- | --- | --- | --- |"]
+        for item in episode["vocabulary"]:
+            cells = [item["term"], item["reading"], item["meaning_ja"], f"{item['example']} / {item['example_ja']}"]
+            rows.append("| " + " | ".join(x.replace("|", "／") for x in cells) + " |")
+        rows.append("")
+    if episode.get("quiz"):
+        rows += ["## Quiz", ""]
+        for number, item in enumerate(episode["quiz"], start=1):
+            rows.append(f"{number}. {item['question_ja']}")
+            for index, choice in enumerate(item["choices"]):
+                mark = "✅" if index == item["answer"] else "・"
+                rows.append(f"   - {mark} {choice}")
+            if item["explanation_ja"]:
+                rows.append(f"   - 解説: {item['explanation_ja']}")
         rows.append("")
     path.write_text("\n".join(rows), encoding="utf-8")
 
@@ -265,6 +475,8 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output" / "languages")
     args = parser.parse_args()
 
+    if not os.getenv("GEMINI_API_KEY", "").strip():
+        raise SystemExit("GEMINI_API_KEY is not configured")
     cfg = load_config()
     news = collect_news(cfg)
     selected = choose_shared_stories(cfg, news)
@@ -276,10 +488,16 @@ def main() -> int:
         "model": os.getenv("GEMINI_MODEL", "").strip() or cfg["provider"]["model"],
         "stories": [{"source": x["source"], "title": x["title"], "url": x["url"]} for x in selected],
         "episodes": [],
+        "failed": [],
     }
     for lang in cfg["languages"]:
-        raw = gemini_json(episode_prompt(args.date, lang, selected, cfg), cfg)
-        episode = validate_episode(raw, args.date, lang, selected, cfg)
+        try:
+            episode = generate_episode(args.date, lang, selected, cfg)
+        except Exception as exc:
+            # One language failing should not cost learners of the other four their daily episode.
+            print(f"::warning::{lang['slug']} edition skipped: {exc}")
+            manifest["failed"].append({"slug": lang["slug"], "error": str(exc)[:500]})
+            continue
         json_path = day / f"{lang['slug']}.json"
         md_path = day / f"{lang['slug']}.md"
         json_path.write_text(json.dumps(episode, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -298,6 +516,9 @@ def main() -> int:
     (day / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    if not manifest["episodes"]:
+        print("[error] no language edition could be generated")
+        return 1
     return 0
 
 

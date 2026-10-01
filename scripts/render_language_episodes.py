@@ -29,30 +29,42 @@ def voice_for(cfg: dict, language: str, speaker: str) -> str:
 
 
 async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> list[Path]:
+    slow_rate = str(cfg.get("learning", {}).get("slow_rate", "-25%"))
     paths: list[Path] = []
     for index, utterance in enumerate(utterances):
         voice = voice_for(cfg, utterance["language"], utterance["speaker"])
+        rate = slow_rate if utterance.get("slow") else "+0%"
         path = work / f"{index:03d}.mp3"
-        await edge_tts.Communicate(utterance["text"], voice=voice).save(str(path))
+        await edge_tts.Communicate(utterance["text"], voice=voice, rate=rate).save(str(path))
         if not path.is_file() or path.stat().st_size == 0:
             raise RuntimeError(f"TTS failed at utterance {index}")
         paths.append(path)
     return paths
 
 
-def assemble(paths: list[Path], utterances: list[dict]) -> AudioSegment:
+def pause_after(utterance: dict, previous_language: str | None, segment_ms: int, cfg: dict) -> int:
+    if utterance.get("slow"):
+        # Leave room for the listener to repeat (shadow) the slow line. Kept below the QA silence limit.
+        low, high = cfg.get("learning", {}).get("shadowing_pause_ms", [1200, 2000])
+        return int(min(high, max(low, segment_ms * 0.8)))
+    if previous_language is None or utterance["language"] == previous_language:
+        return 480
+    return 650
+
+
+def assemble(paths: list[Path], utterances: list[dict], cfg: dict) -> tuple[AudioSegment, list[list[float]]]:
+    """Concatenate utterances and return the audio with each utterance's [start, end] in seconds."""
     audio = AudioSegment.empty()
+    timeline: list[list[float]] = []
     previous_language = None
     for path, utterance in zip(paths, utterances):
         segment = AudioSegment.from_file(path, format="mp3")
+        start = len(audio)
         audio += segment
-        if previous_language is None or utterance["language"] == previous_language:
-            pause_ms = 480
-        else:
-            pause_ms = 650
-        audio += AudioSegment.silent(duration=pause_ms)
+        timeline.append([round(start / 1000, 2), round(len(audio) / 1000, 2)])
+        audio += AudioSegment.silent(duration=pause_after(utterance, previous_language, len(segment), cfg))
         previous_language = utterance["language"]
-    return audio
+    return audio, timeline
 
 
 def export_normalized(audio: AudioSegment, output: Path) -> None:
@@ -103,7 +115,7 @@ def main() -> int:
         output = args.output_dir / f"journey-talk-{manifest['episode_date']}-{slug}.mp3"
         with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
             paths = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
-            audio = assemble(paths, episode["utterances"])
+            audio, timeline = assemble(paths, episode["utterances"], cfg)
             export_normalized(audio, output)
         duration = probe_duration(output)
         if not minimum <= duration <= maximum:
@@ -117,6 +129,7 @@ def main() -> int:
                 "audio": output.name,
                 "duration_seconds": round(duration, 3),
                 "bytes": output.stat().st_size,
+                "timeline": timeline,
             }
         )
         print(f"[audio] {slug}: {duration:.2f}s")

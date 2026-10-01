@@ -231,47 +231,69 @@ python scripts/youtube_oauth_setup.py client_secrets.json
 SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要です。登録後の新エピソードは、Actionsが更新する同じRSSから自動取得されます。
 
 
-## 6言語 × 各約10分のクラウド版
+## 5言語 × 各10〜15分のクラウド版（主系統）
 
-新しい `.github/workflows/daily-multilang.yml` が日次の主系統です。英語・ドイツ語・スペイン語・ロシア語・中国語・韓国語をそれぞれ独立した約10分番組として生成します。
+`.github/workflows/daily-multilang.yml` が日次の主系統です（毎日07:00 JST）。ドイツ語・スペイン語・ロシア語・中国語・韓国語を、それぞれ独立した10〜15分の番組として生成します。
 
-各番組は3件ずつ別の記事を割り当て、対象言語の会話と日本語解説を組み合わせます。6言語合計で18件の異なる記事レコードを使い、音声はEdge TTS、実行基盤はGitHub Actionsです。
+```text
+RSS 3媒体 → Geminiが共通の3記事を選択
+  → 言語ごとに台本＋学習教材をGeminiで生成（検証エラーを返して最大3回再試行）
+  → Edge TTSで音声化（復習パートは🐢ゆっくり再生＋シャドーイング用の間）
+  → 全デコード・無音検査・Whisper照合
+  → GitHub Release（MP3・台本）＋ GitHub Pages（学習プレーヤー・RSS）
+```
 
-### LLMルーティング
+### 必要な設定
 
-優先順は次の通りです。
+Repository secret に `GEMINI_API_KEY`（[Google AI Studio](https://aistudio.google.com/apikey) で発行）を登録してください。未設定の場合、ワークフローは最初の検査で停止し、Job Summaryに設定手順を表示します。任意で Repository variable `GEMINI_MODEL` によりモデルを上書きできます（既定は `cloud_languages.yaml` の `gemini-2.5-flash`）。
 
-1. Venice API — 推奨。既定モデルは `z-ai-glm-5-3-flash`
-2. Featherless API — 任意のフォールバック
-3. Abliteration API — 任意のフォールバック
+### 学習体験
 
-GitHub ActionsのRepository secretに最低1つのAPIキーを登録してください。推奨は `VENICE_API_KEY` です。
+各エピソードは音声に加えて、学習用の教材を生成します。
 
-任意フォールバック:
-- `FEATHERLESS_API_KEY`
-- Repository variable `FEATHERLESS_MODEL`（省略時は設定ファイル既定値）
-- `ABLITERATION_API_KEY`
+- **日本語訳**: 対象言語のすべての発話に訳を付与
+- **単語・表現**: 5〜10個。中国語はピンイン、韓国語はローマ字、ロシア語はアクセント記号付きの読み
+- **リスニングクイズ**: 3〜5問。正解位置は決定的にシャッフル
+- **ゆっくり復唱**: 復習パートの重要文を-25%速度で再読み上げし、続けて真似するための間を挿入
+- **固定ホスト**: ミナ（MC_F）とレン（MC_M）。名前は `cloud_languages.yaml` の `hosts` で変更可
+- **学習者レベル**: `episode.learner_level`（既定 `CEFR B1`）で語彙と文の難しさを調整
 
-旧 `daily-radio.yml` は既存成果物との互換用として残し、日次scheduleは停止して手動実行専用にしています。
+教材の検証に3回とも失敗した場合でも、音声台本として有効なら教材なしで公開します。1言語の生成に失敗しても、他の言語は公開されます（失敗は `manifest.json` の `failed` とActionsの警告に記録）。
+
+### Webプレーヤー（GitHub Pages）
+
+`https://<owner>.github.io/<repo>/` で、スマホ向けの学習プレーヤーが使えます。
+
+- 音声と同期するスクリプト（再生中の文をハイライト、タップでその文へ移動）
+- **🔁 1文リピート**（シャドーイング用）、前後の文へ移動、再生速度 0.75〜1.25×
+- **ブラインドモード**: 対象言語の文をぼかし、聴き終えた文から表示
+- 単語帳（間隔反復: 1→3→7→14→30日）、Anki用TSV書き出し
+- クイズ、聴了記録、連続学習日数（ブラウザのlocalStorageに保存）
+- キーボード操作（Space / ← → / R）とロック画面の操作（Media Session）
 
 ### 毎日の成果物
 
-`daily-multilang.yml` は、各言語について次を作ります。
-
 ```text
-output/languages/YYYY-MM-DD/en.json
-output/languages/YYYY-MM-DD/de.json
-output/languages/YYYY-MM-DD/es.json
-output/languages/YYYY-MM-DD/ru.json
-output/languages/YYYY-MM-DD/zh.json
-output/languages/YYYY-MM-DD/ko.json
+output/languages/YYYY-MM-DD/{de,es,ru,zh,ko}.json   台本＋教材（正本）
+output/languages/YYYY-MM-DD/{slug}.md               訳・単語表・クイズ付きの台本
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-{slug}.mp3
+build/languages/YYYY-MM-DD/media-manifest.json      各発話の開始・終了秒（timeline）を含む
 
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-en.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-de.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-es.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ru.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-zh.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ko.mp3
+docs/episodes.json                                  エピソード一覧
+docs/episodes/YYYY-MM-DD/{slug}.json                プレーヤー用データ（同期スクリプト・単語・クイズ）
+docs/episodes/YYYY-MM-DD/{slug}.vtt                 WebVTT字幕（podcast:transcript）
+docs/feed.xml                                       全言語のPodcast RSS
+docs/feeds/{slug}.xml                               言語別のPodcast RSS
 ```
 
-定期実行では6本のMP3を同日のGitHub Releaseへ公開します。
+Podcastアプリでは、学びたい言語の `feeds/{slug}.xml` だけを購読できます。各エピソードの説明欄には要約・今日の表現・学習ページへのリンクが入り、対応アプリでは字幕（transcript）も表示されます。
+
+### テスト
+
+```bash
+python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
+```
+
+台本・教材の検証、再試行と部分失敗、WebVTT、言語別RSS、シャドーイング用ポーズの上限を検査します。
+
+旧 `daily-radio.yml`（固定カタログ版・1本の多言語MP3）は別系統として残っています。
