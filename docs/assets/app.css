@@ -109,7 +109,20 @@ a.card:hover, a.card:focus-visible { border-color: var(--accent); }
 .w.on { background: var(--accent); color: #fff; box-shadow: 0 0 0 2px var(--accent); }
 @media (prefers-color-scheme: dark) { .w.on { color: #0b1020; } }
 .hide-ja .ja { display: none; }
-.reveal { display: none; background: none; border: 0; cursor: pointer; padding: 8px; font-size: 1rem; }
+.line { flex-wrap: wrap; }
+.line-actions { display: flex; flex-direction: column; }
+.reveal, .mic { background: none; border: 0; cursor: pointer; padding: 8px; font-size: 1rem; border-radius: 10px; }
+.mic:hover { background: var(--surface-2); }
+.reveal { display: none; }
+.coach { flex-basis: 100%; margin: 2px 0 8px 3.2em; padding: 10px 12px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); border: 1px solid var(--line); }
+.coach-status { font-size: .9rem; }
+.coach-heard { font-size: .82rem; margin-top: 4px; }
+.coach-score b { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.coach-score span:first-of-type { margin-right: 8px; }
+.coach-diff { font-size: 1.05rem; margin: 6px 0 2px; line-height: 1.9; }
+.coach-diff .hit { color: var(--ok); }
+.coach-diff .miss { color: var(--ng); text-decoration: underline wavy; text-underline-offset: 4px; }
+.coach-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .blind .line.t:not(.revealed) .reveal { display: block; }
 .blind .line.t:not(.revealed) .txt,
 .blind .line.t:not(.revealed) .ja { filter: blur(7px); user-select: none; }
@@ -169,4 +182,5 @@ kbd { font-size: .78rem; border: 1px solid var(--line); border-radius: 4px; padd
   .controls .label { display: none; }
   .tabs button { padding: 8px 10px; }
   .line-main { grid-template-columns: 2.6em 1fr; }
+  .coach { margin-left: 0; }
 }

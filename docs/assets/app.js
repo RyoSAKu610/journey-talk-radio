@@ -7,6 +7,10 @@ const BUCKET_SECONDS = 10; // listening coverage is tracked in 10 s buckets
 const DONE_RATIO = 0.85;
 const STORE_KEY = 'journeyTalk.v1';
 
+const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+// Languages written without spaces between words are compared character by character.
+const CHAR_LANGS = /^(zh|ja|ko)/;
+
 const app = document.getElementById('app');
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const httpUrl = (value) => (/^https?:\/\//i.test(String(value || '')) ? String(value) : '#');
@@ -284,7 +288,10 @@ function scriptLine(line, i, targetLanguage, hosts) {
         <span class="txt" lang="${esc(line.language)}">${karaoke(line)}${line.slow ? '<span class="slow">🐢 ゆっくり</span>' : ''}</span>
         ${line.ja ? `<span class="ja" lang="ja">${esc(line.ja)}</span>` : ''}
       </button>
-      ${target ? '<button class="reveal" type="button" aria-label="この文を表示">👁</button>' : ''}
+      ${target ? `<span class="line-actions">
+        <button class="reveal" type="button" aria-label="この文を表示">👁</button>
+        ${SpeechRecognitionImpl ? '<button class="mic" type="button" aria-label="発音チェック">🎤</button>' : ''}
+      </span>` : ''}
     </li>`;
 }
 
@@ -427,9 +434,18 @@ function setupPlayer(ep, lines, timed, key, progress) {
     return found;
   };
   const play = () => audio.play().catch(() => toast('再生できませんでした。通信状況を確認してください。'));
+  let stopAt = null;
+  const playLineOnce = (i) => {
+    if (!timed) return;
+    setLoop(-1);
+    audio.currentTime = lines[i].start;
+    stopAt = lines[i].end + 0.1;
+    play();
+  };
   const jumpToLine = (i) => {
     if (!timed || i < 0 || i >= lines.length) return;
     audio.currentTime = lines[i].start;
+    stopAt = null;
     if (loopIndex >= 0) setLoop(i);
     if (audio.paused) play();
   };
@@ -480,6 +496,7 @@ function setupPlayer(ep, lines, timed, key, progress) {
     if (!seeking) seek.value = String(Math.round((t / duration()) * 1000));
     timeEl.textContent = `${fmt(t)} / ${fmt(duration())}`;
     if (timed) {
+      if (stopAt !== null && t >= stopAt) { stopAt = null; audio.pause(); }
       if (loopIndex >= 0 && t >= lines[loopIndex].end + 0.15) audio.currentTime = lines[loopIndex].start;
       setActive(lineAt(audio.currentTime));
       setWord(audio.currentTime);
@@ -530,7 +547,7 @@ function setupPlayer(ep, lines, timed, key, progress) {
     toast('🔁 この文をくり返します。声に出してまねしてみよう');
   });
   seek.addEventListener('input', () => { seeking = true; timeEl.textContent = `${fmt((seek.value / 1000) * duration())} / ${fmt(duration())}`; });
-  seek.addEventListener('change', () => { setLoop(-1); audio.currentTime = (seek.value / 1000) * duration(); seeking = false; tick(); });
+  seek.addEventListener('change', () => { setLoop(-1); stopAt = null; audio.currentTime = (seek.value / 1000) * duration(); seeking = false; tick(); });
   script.addEventListener('click', (event) => {
     const main = event.target.closest('.line-main');
     if (!main || !timed) return;
@@ -560,7 +577,10 @@ function setupPlayer(ep, lines, timed, key, progress) {
     } catch (_) { /* optional */ }
   }
 
+  const stopCoach = timed ? createSpeechCoach({ lines, rows, progress, pause: () => audio.pause(), playLineOnce }) : () => {};
+
   return () => {
+    stopCoach();
     save(true);
     audio.pause();
     cancelAnimationFrame(raf);
@@ -570,6 +590,136 @@ function setupPlayer(ep, lines, timed, key, progress) {
     document.removeEventListener('visibilitychange', onHide);
     document.body.classList.remove('has-player');
   };
+}
+
+/* ---------- shadowing coach: speech recognition + comparison ---------- */
+const normalizeSpeech = (text) => String(text || '').normalize('NFKC').toLowerCase().replace(/[\p{P}\p{S}]+/gu, ' ').trim();
+
+// Returns the words (or characters) to compare, plus how to show each one to the learner.
+function speechTokens(text, language) {
+  const clean = normalizeSpeech(text);
+  if (CHAR_LANGS.test(language)) {
+    const chars = [...clean.replace(/\s+/g, '')];
+    return { keys: chars, shown: chars };
+  }
+  const shown = clean.split(/\s+/).filter(Boolean);
+  // Accents do not change how a word sounds to the recognizer's ear (sí / si, ё / е), so ignore them.
+  return { keys: shown.map((w) => w.normalize('NFD').replace(/\p{M}+/gu, '').normalize('NFC')), shown };
+}
+
+// Longest common subsequence: which target tokens were heard, in order.
+function compareSpeech(target, heard, language) {
+  const { keys: want, shown } = speechTokens(target, language);
+  const got = speechTokens(heard, language).keys;
+  const table = Array.from({ length: want.length + 1 }, () => new Array(got.length + 1).fill(0));
+  for (let i = want.length - 1; i >= 0; i -= 1) {
+    for (let j = got.length - 1; j >= 0; j -= 1) {
+      table[i][j] = want[i] === got[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const matched = new Array(want.length).fill(false);
+  let i = 0; let j = 0;
+  while (i < want.length && j < got.length) {
+    if (want[i] === got[j]) { matched[i] = true; i += 1; j += 1; }
+    else if (table[i + 1][j] >= table[i][j + 1]) i += 1;
+    else j += 1;
+  }
+  const hits = matched.filter(Boolean).length;
+  return { tokens: shown, matched, score: want.length ? Math.round((hits / want.length) * 100) : 0, joiner: CHAR_LANGS.test(language) ? '' : ' ' };
+}
+
+function speechVerdict(score) {
+  if (score >= 90) return 'すばらしい！ネイティブの耳にも通じます 🎉';
+  if (score >= 70) return 'いい感じ！赤い所だけもう一度';
+  if (score >= 40) return 'もう少し！お手本を聞いてから再挑戦';
+  return 'ゆっくりでOK。1語ずつ区切って言ってみよう';
+}
+
+function createSpeechCoach({ lines, rows, progress, pause, playLineOnce }) {
+  if (!SpeechRecognitionImpl) return () => {};
+  let recognizer = null;
+  const stop = () => { if (recognizer) { try { recognizer.abort(); } catch (_) { /* ignore */ } recognizer = null; } };
+  const panelFor = (i) => {
+    let panel = rows[i].querySelector('.coach');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.className = 'coach';
+      rows[i].appendChild(panel);
+    }
+    return panel;
+  };
+  const listen = (i) => {
+    stop();
+    pause();
+    const line = lines[i];
+    const panel = panelFor(i);
+    rows[i].classList.add('revealed');
+    panel.innerHTML = '<div class="coach-status">🎙 聞き取り中… 文を声に出して読んでください</div><div class="coach-heard muted"></div>';
+    const heardEl = panel.querySelector('.coach-heard');
+    const rec = new SpeechRecognitionImpl();
+    recognizer = rec;
+    rec.lang = line.language;
+    rec.interimResults = true;
+    rec.maxAlternatives = 3;
+    let finalText = '';
+    let best = null;
+    rec.onresult = (event) => {
+      let interim = '';
+      for (let k = event.resultIndex; k < event.results.length; k += 1) {
+        const result = event.results[k];
+        if (result.isFinal) {
+          // Recognizers return a few guesses; keep the one closest to the target sentence.
+          for (let a = 0; a < result.length; a += 1) {
+            const candidate = (finalText + ' ' + result[a].transcript).trim();
+            const graded = compareSpeech(line.text, candidate, line.language);
+            if (!best || graded.score > best.graded.score) best = { text: candidate, graded };
+          }
+          finalText = best.text;
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+      heardEl.textContent = (finalText + ' ' + interim).trim();
+    };
+    rec.onerror = (event) => {
+      const reason = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+        ? 'マイクの使用が許可されていません。ブラウザの設定で許可してください。'
+        : event.error === 'no-speech' ? '声が聞き取れませんでした。もう一度どうぞ。' : `音声認識エラー: ${event.error}`;
+      panel.innerHTML = `<div class="coach-status">${esc(reason)}</div>`;
+      recognizer = null;
+    };
+    rec.onend = () => {
+      if (recognizer !== rec) return;
+      recognizer = null;
+      if (!best) { panel.innerHTML = '<div class="coach-status">声が聞き取れませんでした。もう一度どうぞ。</div>'; return; }
+      const { graded } = best;
+      const previous = (progress.speak || {})[i] || 0;
+      progress.speak = { ...(progress.speak || {}), [i]: Math.max(previous, graded.score) };
+      markActiveToday();
+      const diff = graded.tokens.map((token, k) => `<span class="${graded.matched[k] ? 'hit' : 'miss'}">${esc(token)}</span>`).join(graded.joiner);
+      panel.innerHTML = `
+        <div class="coach-score"><b>${graded.score}</b><span>点</span> ${esc(speechVerdict(graded.score))}${previous ? ` <span class="muted">（ベスト ${Math.max(previous, graded.score)}点）</span>` : ''}</div>
+        <div class="coach-diff" lang="${esc(line.language)}">${diff}</div>
+        <div class="coach-heard muted">聞き取り: ${esc(best.text)}</div>
+        <div class="coach-actions">
+          <button class="btn" data-coach="model">🔊 お手本</button>
+          <button class="btn primary" data-coach="again">🎤 もう一度</button>
+        </div>`;
+    };
+    try { rec.start(); } catch (err) { panel.innerHTML = `<div class="coach-status">${esc(err.message || err)}</div>`; }
+  };
+  const onClick = (event) => {
+    const mic = event.target.closest('.mic');
+    const action = event.target.closest('[data-coach]');
+    const row = event.target.closest('.line');
+    if (!row) return;
+    const i = Number(row.dataset.i);
+    if (mic) listen(i);
+    else if (action && action.dataset.coach === 'again') listen(i);
+    else if (action && action.dataset.coach === 'model') { stop(); playLineOnce(i); }
+  };
+  rows[0]?.parentElement.addEventListener('click', onClick);
+  return stop;
 }
 
 /* ---------- word bank with spaced review ---------- */
