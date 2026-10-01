@@ -93,20 +93,31 @@ def assemble(
     return audio, timeline, words
 
 
-def export_normalized(audio: AudioSegment, output: Path) -> None:
+def offline_name(audio_name: str) -> str:
+    """journey-talk-DATE-es.mp3 -> journey-talk-DATE-es.offline.mp3"""
+    return audio_name[: -len(".mp3")] + ".offline.mp3"
+
+
+def export_normalized(audio: AudioSegment, output: Path, offline: Path | None = None) -> None:
+    """Loudness-normalise once and encode the 192 kbps master plus, optionally, a small offline copy.
+
+    The offline copy (64 kbps mono, about a third of the size) is served from GitHub Pages so the
+    web player can save it for offline listening; both files share the same timeline.
+    """
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="journey-talk-normalize-") as temp:
         source = Path(temp) / "source.wav"
         audio.export(source, format="wav")
-        subprocess.run(
-            [
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-i", str(source),
-                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-                "-codec:a", "libmp3lame", "-b:a", "192k", str(output),
-            ],
-            check=True,
-        )
+        command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source)]
+        if offline is None:
+            command += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-codec:a", "libmp3lame", "-b:a", "192k", str(output)]
+        else:
+            command += [
+                "-filter_complex", "[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,asplit=2[master][small]",
+                "-map", "[master]", "-codec:a", "libmp3lame", "-b:a", "192k", str(output),
+                "-map", "[small]", "-ac", "1", "-codec:a", "libmp3lame", "-b:a", "64k", str(offline),
+            ]
+        subprocess.run(command, check=True)
 
 
 def probe_duration(path: Path) -> float:
@@ -142,7 +153,8 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
             paths, word_timings = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
             audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
-            export_normalized(audio, output)
+            offline = output.with_name(offline_name(output.name))
+            export_normalized(audio, output, offline)
         duration = probe_duration(output)
         if not minimum <= duration <= maximum:
             raise RuntimeError(f"{slug} duration {duration:.2f}s outside {minimum:.0f}..{maximum:.0f}s")
@@ -155,6 +167,8 @@ def main() -> int:
                 "audio": output.name,
                 "duration_seconds": round(duration, 3),
                 "bytes": output.stat().st_size,
+                "offline_audio": offline.name,
+                "offline_bytes": offline.stat().st_size,
                 "timeline": timeline,
                 "words": words,
             }

@@ -13,6 +13,8 @@ on:
       - "scripts/publish_multilang_site.py"
       - "docs/index.html"
       - "docs/assets/**"
+      - "docs/sw.js"
+      - "docs/manifest.webmanifest"
       - "requirements.txt"
   schedule:
     - cron: "0 22 * * *"
@@ -147,6 +149,24 @@ jobs:
           git diff --cached --quiet || git commit -m "publish: Journey Talk ${{ steps.day.outputs.date }}"
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Stage offline audio for the web player
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OFFLINE_DAYS: "3"
+        run: |
+          # Low-bitrate copies are served from Pages (same origin) so the player can save them
+          # for offline listening with seeking. They are deployed, never committed.
+          DATE="${{ steps.day.outputs.date }}"
+          mkdir -p "docs/offline/$DATE"
+          cp build/languages/"$DATE"/*.offline.mp3 "docs/offline/$DATE/"
+          for i in $(seq 1 $((OFFLINE_DAYS - 1))); do
+            DAY=$(TZ=Asia/Tokyo date -d "$DATE -$i day" +%F)
+            mkdir -p "docs/offline/$DAY"
+            gh release download "multilang-$DAY" --pattern '*.offline.mp3' --dir "docs/offline/$DAY" --clobber \
+              || echo "no offline audio for $DAY"
+          done
+          du -sh docs/offline
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

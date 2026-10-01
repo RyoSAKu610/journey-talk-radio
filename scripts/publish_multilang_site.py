@@ -127,6 +127,7 @@ def build_feed(
     slug: str | None = None,
     title: str = "Journey Talk",
     description: str = CHANNEL_DESCRIPTION,
+    image: str = "covers/journey-talk.png",
 ) -> ET.ElementTree:
     feed_path = f"feeds/{slug}.xml" if slug else "feed.xml"
     rss = ET.Element("rss", {"version": "2.0"})
@@ -137,6 +138,11 @@ def build_feed(
     text_node(channel, "description", description)
     text_node(channel, f"{{{ITUNES}}}author", "Journey Talk")
     text_node(channel, f"{{{ITUNES}}}explicit", "false")
+    ET.SubElement(channel, f"{{{ITUNES}}}image", {"href": f"{base_url}/{image}"})
+    artwork = ET.SubElement(channel, "image")
+    text_node(artwork, "url", f"{base_url}/{image}")
+    text_node(artwork, "title", title)
+    text_node(artwork, "link", base_url)
     ET.SubElement(
         channel,
         f"{{{ATOM}}}link",
@@ -214,6 +220,8 @@ def main() -> int:
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
         media_item = media_by_slug[item["slug"]]
         audio_url = f"{release_base}/{media_item['audio']}"
+        # Same-origin low-bitrate copy, staged onto GitHub Pages for the last few days only.
+        offline_url = f"offline/{args.date}/{media_item['offline_audio']}" if media_item.get("offline_audio") else ""
         lines = timed_lines(episode["utterances"], media_item.get("timeline"), media_item.get("words"))
         detail = {
             "date": args.date,
@@ -224,6 +232,7 @@ def main() -> int:
             "title": episode["title"],
             "summary_ja": episode.get("summary_ja", ""),
             "audio_url": audio_url,
+            "offline_url": offline_url,
             "duration_seconds": media_item["duration_seconds"],
             "hosts": hosts,
             "stories": episode.get("stories", manifest["stories"]),
@@ -242,6 +251,8 @@ def main() -> int:
             "summary_ja": detail["summary_ja"],
             "highlights": [f"{x['term']} — {x['meaning_ja']}" for x in detail["vocabulary"][:5]],
             "audio_url": audio_url,
+            "offline_url": offline_url,
+            "offline_bytes": media_item.get("offline_bytes", 0),
             "script_url": f"{release_base}/{item['markdown']}",
             "detail_url": f"episodes/{args.date}/{detail_path.name}",
             "duration_seconds": media_item["duration_seconds"],
@@ -268,6 +279,7 @@ def main() -> int:
                 slug=lang["slug"],
                 title=f"Journey Talk — {lang['japanese_name']}",
                 description=f"最新ニュースを題材にした、日本語ナビ付き{lang['japanese_name']}のデイリー語学ラジオ。",
+                image=f"covers/{lang['slug']}.png",
             ),
             args.docs_dir / "feeds" / f"{lang['slug']}.xml",
         )

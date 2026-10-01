@@ -95,6 +95,59 @@ async function loadDetail(url) {
   return detailCache.get(url);
 }
 
+/* ---------- offline saving (service worker + Cache Storage) ---------- */
+const AUDIO_CACHE = 'jt-audio';
+const offlineSupported = 'caches' in window && 'serviceWorker' in navigator;
+const absUrl = (rel) => new URL(rel, location.href.split('#')[0]).href;
+const mb = (bytes) => (bytes ? `（${(bytes / 1048576).toFixed(1)}MB）` : '');
+
+async function savedAudioUrls() {
+  if (!offlineSupported) return new Set();
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    return new Set((await cache.keys()).map((r) => r.url));
+  } catch (_) { return new Set(); }
+}
+async function isSaved(rel) {
+  return Boolean(rel) && (await savedAudioUrls()).has(absUrl(rel));
+}
+async function saveOffline(rel, onProgress, dataUrls = []) {
+  // Keep the script, vocabulary and episode list with the audio so the whole page works offline.
+  try { await (await caches.open('jt-data')).addAll(dataUrls.map(absUrl)); } catch (_) { /* best effort */ }
+  const res = await fetch(rel, { cache: 'no-store' });
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+  const total = Number(res.headers.get('content-length')) || 0;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total) onProgress(Math.round((received / total) * 100));
+  }
+  const blob = new Blob(chunks, { type: 'audio/mpeg' });
+  const cache = await caches.open(AUDIO_CACHE);
+  await cache.put(absUrl(rel), new Response(blob, { headers: { 'Content-Type': 'audio/mpeg', 'Content-Length': String(blob.size) } }));
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (_) { /* optional */ }
+}
+async function removeOffline(rel) {
+  const cache = await caches.open(AUDIO_CACHE);
+  await cache.delete(absUrl(rel));
+}
+
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  const slot = document.getElementById('install-slot');
+  if (slot) slot.hidden = false;
+});
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode unavailable */ }));
+}
+
 /* ---------- shared chrome ---------- */
 function topbar(current) {
   const due = dueWords().length;
@@ -139,7 +192,9 @@ async function renderHome() {
     ${topbar('home')}
     <h1>ニュースで毎日、ことばの旅へ</h1>
     <p class="sub">最新ニュースを題材にした10〜15分の語学ラジオ。スクリプト同期・1文リピート・単語帳・クイズつき。</p>
+    ${navigator.onLine ? '' : '<div class="empty offline-banner">📴 オフラインです。保存済みのエピソード、単語帳、クイズが使えます。</div>'}
     ${statsRow()}
+    <div id="install-slot" ${installPrompt ? '' : 'hidden'}><button class="btn" id="install">📲 ホーム画面に追加（アプリとして使う）</button></div>
     <details class="howto">
       <summary>おすすめの学び方（1日15分）</summary>
       <ol>
@@ -148,6 +203,7 @@ async function renderHome() {
         <li>難しい文は <b>🔁 1文リピート</b> で、声に出してシャドーイング</li>
         <li>気になる表現を<b>単語帳</b>へ。最後に<b>クイズ</b>で理解度チェック</li>
       </ol>
+      <p class="muted" style="font-size:.85rem;margin:6px 0 0">通勤前に「⬇ オフライン保存」しておくと、電波がなくてもスクリプト同期つきで聴けます。iPhoneは共有ボタン →「ホーム画面に追加」でアプリのように使えます。</p>
     </details>
     <div class="chips" role="group" aria-label="学習する言語">${chips}</div>
     <p class="feedlink">${feed}</p>
@@ -158,6 +214,20 @@ async function renderHome() {
     store.save();
     renderHome();
   }));
+  const install = document.getElementById('install');
+  install.addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    installPrompt = null;
+    document.getElementById('install-slot').hidden = true;
+  });
+  const saved = await savedAudioUrls();
+  app.querySelectorAll('.card[data-offline]').forEach((card) => {
+    const isHere = saved.has(absUrl(card.dataset.offline));
+    if (isHere) card.querySelector('.badges').insertAdjacentHTML('afterbegin', '<span class="tag badge-done">📥 保存済み</span>');
+    if (!navigator.onLine && !isHere) card.classList.add('unavailable');
+  });
 }
 
 function episodeCard(day, ep) {
@@ -171,11 +241,11 @@ function episodeCard(day, ep) {
   const top = `<div class="card-top"><span>${langLabel(ep)}</span><span>${Math.round(ep.duration_seconds / 60)}分</span></div>`;
   if (relUrl(ep.detail_url)) {
     return `
-      <a class="card" href="#/${esc(day.date)}/${esc(ep.slug)}">
+      <a class="card" href="#/${esc(day.date)}/${esc(ep.slug)}" ${relUrl(ep.offline_url) ? `data-offline="${esc(ep.offline_url)}"` : ''}>
         ${top}
         <h3>${esc(ep.title)}</h3>
         ${ep.summary_ja ? `<p class="summary">${esc(ep.summary_ja)}</p>` : ''}
-        ${badges.length ? `<div class="badges">${badges.join('')}</div>` : ''}
+        <div class="badges">${badges.join('')}</div>
       </a>`;
   }
   // Episodes published before the study player existed: plain audio + script download.
@@ -216,7 +286,10 @@ async function renderEpisode(date, slug) {
       <div class="muted">${langLabel(ep)} · ${esc(ep.date)} · ${Math.round(ep.duration_seconds / 60)}分</div>
       <h1>${esc(ep.title)}</h1>
       ${ep.summary_ja ? `<p>${esc(ep.summary_ja)}</p>` : ''}
-      ${progress.pos > 15 && !progress.done ? `<button class="btn resume" id="resume">▶ 続きから再生（${fmt(progress.pos)}）</button>` : ''}
+      <div class="ep-actions">
+        ${progress.pos > 15 && !progress.done ? `<button class="btn resume" id="resume">▶ 続きから再生（${fmt(progress.pos)}）</button>` : ''}
+        <span id="offline-slot"></span>
+      </div>
     </header>
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="script" aria-selected="true">スクリプト</button>
@@ -264,7 +337,10 @@ async function renderEpisode(date, slug) {
   setupPrefs();
   setupVocab(ep, vocab);
   renderQuiz(quiz, progress);
-  teardown = setupPlayer(ep, lines, timed, key, progress);
+  const offlineRel = relUrl(ep.offline_url);
+  const savedHere = offlineSupported && offlineRel ? await isSaved(offlineRel) : false;
+  teardown = setupPlayer(ep, lines, timed, key, progress, savedHere ? offlineRel : httpUrl(ep.audio_url));
+  setupOffline(offlineRel, entry, teardown);
 }
 
 // Wrap each spoken word in a span so it can light up while it is being said (karaoke view).
@@ -408,10 +484,41 @@ function renderQuiz(quiz, progress) {
 }
 
 /* ---------- audio player with transcript sync ---------- */
-function setupPlayer(ep, lines, timed, key, progress) {
+function setupOffline(rel, entry, player) {
+  const slot = document.getElementById('offline-slot');
+  if (!slot || !offlineSupported || !rel) return;
+  const draw = async () => {
+    if (await isSaved(rel)) {
+      slot.innerHTML = '<span class="tag badge-done">📥 オフライン保存済み</span> <button class="btn" id="off-del">削除</button>';
+      document.getElementById('off-del').addEventListener('click', async () => { await removeOffline(rel); player.swapSource(httpUrl(entry.audio_url)); draw(); });
+      return;
+    }
+    if (!navigator.onLine) { slot.innerHTML = '<span class="muted">📴 この回は未保存のため、オンライン時に再生できます</span>'; return; }
+    let available = false;
+    try { available = (await fetch(rel, { method: 'HEAD', cache: 'no-store' })).ok; } catch (_) { /* treat as unavailable */ }
+    if (!available) { slot.innerHTML = '<span class="muted" style="font-size:.82rem">オフライン保存は公開から3日以内の回でできます</span>'; return; }
+    slot.innerHTML = `<button class="btn" id="off-save">⬇ オフライン保存${mb(entry.offline_bytes)}</button>`;
+    const button = document.getElementById('off-save');
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.textContent = '保存中…';
+      try {
+        await saveOffline(rel, (pct) => { button.textContent = `保存中… ${pct}%`; }, ['episodes.json', entry.detail_url]);
+        player.swapSource(rel);
+        toast('📥 保存しました。電波がなくても聴けます');
+      } catch (err) {
+        toast(`保存できませんでした: ${err.message || err}`);
+      }
+      draw();
+    });
+  };
+  draw();
+}
+
+function setupPlayer(ep, lines, timed, key, progress, source) {
   const audio = new Audio();
   audio.preload = 'metadata';
-  audio.src = httpUrl(ep.audio_url);
+  audio.src = source;
   audio.playbackRate = store.state.prefs.rate;
   const seek = app.querySelector('.seek');
   const timeEl = document.getElementById('time');
@@ -582,7 +689,7 @@ function setupPlayer(ep, lines, timed, key, progress) {
 
   const stopCoach = timed ? createSpeechCoach({ lines, rows, progress, pause: () => audio.pause(), playLineOnce }) : () => {};
 
-  return () => {
+  const close = () => {
     stopCoach();
     save(true);
     audio.pause();
@@ -593,6 +700,14 @@ function setupPlayer(ep, lines, timed, key, progress) {
     document.removeEventListener('visibilitychange', onHide);
     document.body.classList.remove('has-player');
   };
+  // Switch between the streamed and the saved copy without losing the listening position.
+  close.swapSource = (url) => {
+    const at = audio.currentTime;
+    const wasPlaying = !audio.paused;
+    audio.src = url;
+    audio.addEventListener('loadedmetadata', () => { audio.currentTime = at; if (wasPlaying) play(); }, { once: true });
+  };
+  return close;
 }
 
 /* ---------- shadowing coach: speech recognition + comparison ---------- */
@@ -827,7 +942,10 @@ async function route() {
     else if (parts.length === 2) await renderEpisode(parts[0], parts[1]);
     else await renderHome();
   } catch (err) {
-    app.innerHTML = `${topbar('')}<div class="empty">読み込みに失敗しました: ${esc(err.message || err)}</div>`;
+    const message = navigator.onLine
+      ? `読み込みに失敗しました: ${esc(err.message || err)}`
+      : '📴 オフラインのため開けません。この回は、オンライン時に一度開くか「⬇ オフライン保存」しておくとオフラインでも使えます。';
+    app.innerHTML = `${topbar('')}<div class="empty">${message} <a href="#/">一覧へ戻る</a></div>`;
   }
   window.scrollTo(0, 0);
 }

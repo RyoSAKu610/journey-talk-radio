@@ -206,6 +206,7 @@ class PublishTests(unittest.TestCase):
             timeline = [[i * 2.0, i * 2.0 + 1.5] for i in range(len(episode["utterances"]))]
             (media_dir / "media-manifest.json").write_text(json.dumps({"episodes": [{
                 "slug": "es", "audio": f"journey-talk-{DATE}-es.mp3", "duration_seconds": 700.0, "bytes": 1234, "timeline": timeline,
+                "offline_audio": f"journey-talk-{DATE}-es.offline.mp3", "offline_bytes": 400,
             }]}), encoding="utf-8")
             # A day published before the study player existed must keep working.
             docs.mkdir()
@@ -225,6 +226,7 @@ class PublishTests(unittest.TestCase):
             entry = history[0]["episodes"][0]
             self.assertEqual(entry["detail_url"], f"episodes/{DATE}/es.json")
             self.assertEqual(entry["transcript_url"], f"episodes/{DATE}/es.vtt")
+            self.assertEqual(entry["offline_url"], f"offline/{DATE}/journey-talk-{DATE}-es.offline.mp3")
             self.assertEqual(entry["highlights"][0], "viajar — 旅行する")
 
             detail = json.loads((docs / entry["detail_url"]).read_text(encoding="utf-8"))
@@ -321,6 +323,37 @@ class WeeklyReviewTests(unittest.TestCase):
         items = publish.build_feed(history, "https://example.test", slug="es").getroot().findall("./channel/item")
         self.assertEqual([x.findtext("guid") for x in items], ["journey-talk:2026-10-04:es", "journey-talk:2026-10-04:es-weekly"])
         self.assertIn("07:05:00", items[1].findtext("pubDate"))
+
+
+class OfflineAndArtworkTests(unittest.TestCase):
+    def test_feeds_carry_cover_art(self):
+        history = [{"date": DATE, "episodes": []}]
+        combined = publish.build_feed(history, "https://example.test").getroot().find("channel")
+        self.assertEqual(combined.find(f"{{{publish.ITUNES}}}image").attrib["href"], "https://example.test/covers/journey-talk.png")
+        spanish = publish.build_feed(history, "https://example.test", slug="es", image="covers/es.png").getroot().find("channel")
+        self.assertEqual(spanish.findtext("image/url"), "https://example.test/covers/es.png")
+
+    def test_committed_artwork_exists_for_every_language(self):
+        for lang in BASE_CFG["languages"]:
+            self.assertTrue((PROJECT_DIR / "docs" / "covers" / f"{lang['slug']}.png").is_file(), lang["slug"])
+        manifest = json.loads((PROJECT_DIR / "docs" / "manifest.webmanifest").read_text(encoding="utf-8"))
+        for icon in manifest["icons"]:
+            self.assertTrue((PROJECT_DIR / "docs" / icon["src"]).is_file(), icon["src"])
+
+    def test_render_writes_small_offline_copy_with_same_length(self):
+        try:
+            render = load_script("render_language_episodes")
+            from pydub import AudioSegment
+        except ImportError as exc:  # audio dependencies are installed in CI
+            self.skipTest(f"audio dependencies unavailable: {exc}")
+        self.assertEqual(render.offline_name("journey-talk-2026-10-01-es-weekly.mp3"), "journey-talk-2026-10-01-es-weekly.offline.mp3")
+        tone = AudioSegment.silent(duration=3000)
+        with tempfile.TemporaryDirectory() as temporary:
+            master, offline = Path(temporary) / "a.mp3", Path(temporary) / "a.offline.mp3"
+            render.export_normalized(tone, master, offline)
+            self.assertTrue(master.is_file() and offline.is_file())
+            self.assertLess(offline.stat().st_size, master.stat().st_size)
+            self.assertAlmostEqual(render.probe_duration(master), render.probe_duration(offline), delta=0.1)
 
 
 class KaraokeTests(unittest.TestCase):
