@@ -34,9 +34,18 @@ def load_config() -> dict:
 
 
 def text_models(cfg: dict) -> list[str]:
-    """Script-writing models, newest first; GEMINI_MODEL overrides."""
+    """Script-writing models, newest first; GEMINI_MODEL overrides. Models out of quota are skipped."""
     override = os.getenv("GEMINI_MODEL", "").strip()
-    return [m for m in [override, *cfg["provider"]["models"]] if m]
+    return [m for m in [override, *cfg["provider"]["models"]] if m and m not in EXHAUSTED]
+
+
+def last_resort_models(cfg: dict) -> list[str]:
+    """Weaker models used only when no regular model can answer (they write much shorter scripts)."""
+    return [m for m in cfg["provider"].get("last_resort_models", []) if m not in EXHAUSTED]
+
+
+# Models whose free-tier daily quota ran out during this run; asking again today only wastes time.
+EXHAUSTED: set[str] = set()
 
 
 MODEL_USED: dict[str, str] = {}
@@ -62,6 +71,9 @@ def post_gemini(payload: dict, cfg: dict, models: list[str] | None = None):
                 time.sleep(15 * attempt)
                 continue
             daily_quota = response.status_code == 429 and "PerDay" in response.text
+            if daily_quota:
+                EXHAUSTED.add(model)
+                print(f"[warn] {model}: free-tier daily quota used up; skipping it for the rest of this run")
             if response.status_code in RETRYABLE_STATUS and not daily_quota and attempt < HTTP_ATTEMPTS:
                 print(f"[warn] {model} HTTP {response.status_code}; retrying in {15 * attempt}s")
                 time.sleep(15 * attempt)
@@ -112,10 +124,11 @@ def gemini_json_from(prompt: str, cfg: dict, models: list[str] | None = None) ->
     try:
         result = json.loads(text)
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.S)
-        if not match:
+        # Some models append text after the JSON object ("Extra data"); read the first object only.
+        start = text.find("{")
+        if start < 0:
             raise
-        result = json.loads(match.group(0))
+        result, _ = json.JSONDecoder().raw_decode(text[start:])
     if not isinstance(result, dict):
         raise ValueError("Gemini response must be a JSON object")
     return result, model
@@ -492,8 +505,12 @@ def validate_learning(data: dict, episode: dict, cfg: dict) -> dict:
 
 
 def contestant_orders(cfg: dict) -> list[list[str]]:
-    """Model order for each parallel contestant: each starts on a different model, then falls back."""
+    """Model order for each parallel contestant: each starts on a different model, then falls back
+    through the other regular models. When every regular model is out of quota, a single contestant
+    uses the last-resort models."""
     models = text_models(cfg)
+    if not models:
+        return [last_resort_models(cfg)] if last_resort_models(cfg) else []
     count = max(1, min(int(cfg["episode"].get("parallel_models", 1)), len(models)))
     return [models[i:] + models[:i] for i in range(count)]
 
@@ -530,10 +547,12 @@ def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prom
     attempts = max(1, int(cfg["episode"].get("generation_attempts", 3)))
     low, high = cfg["episode"]["minimum_seconds"], cfg["episode"]["maximum_seconds"]
     ideal = low + 0.6 * (high - low)
-    orders = contestant_orders(cfg)
     feedback = ""
     spoken_only: dict | None = None
     for attempt in range(1, attempts + 1):
+        orders = contestant_orders(cfg)  # re-read each round: quotas may have run out meanwhile
+        if not orders:
+            raise RuntimeError(f"{lang['slug']}: every script model is out of free-tier quota today")
         prompt = (prompt_builder or episode_prompt)(date, lang, stories, cfg, feedback)
         if len(orders) == 1:
             results = [run_contestant(prompt, orders[0], date, lang, stories, cfg)]

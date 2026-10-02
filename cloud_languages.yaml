@@ -1,8 +1,11 @@
 provider:
   # Script-writing models, tried in order (gemini-2.5-flash is no longer offered to new API keys).
   # Override with the GEMINI_MODEL repository variable.
-  # Each model has its own free-tier quota; flash-lite writes noticeably shorter scripts, so it comes last.
-  models: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+  # Each model has its own free-tier quota (about 20 requests a day). Models that run out are skipped
+  # for the rest of the run.
+  models: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]
+  # flash-lite writes far shorter scripts (25-40 turns), so it only steps in when every model above is out.
+  last_resort_models: ["gemini-3.1-flash-lite"]
 
 episode:
   minimum_seconds: 600

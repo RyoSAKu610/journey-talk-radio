@@ -138,6 +138,35 @@ class EpisodeValidationTests(unittest.TestCase):
 
 
 class ModelContestTests(unittest.TestCase):
+    def setUp(self):
+        build.EXHAUSTED.clear()
+        self.addCleanup(build.EXHAUSTED.clear)
+
+    def test_models_out_of_quota_are_skipped_and_flash_lite_is_last_resort(self):
+        cfg = test_cfg()
+        cfg["episode"]["parallel_models"] = 3
+        regular = cfg["provider"]["models"]
+        self.assertNotIn("gemini-3.1-flash-lite", regular)
+        build.EXHAUSTED.update(regular[1:])
+        self.assertEqual(build.contestant_orders(cfg), [[regular[0]]])
+        build.EXHAUSTED.add(regular[0])
+        self.assertEqual(build.contestant_orders(cfg), [cfg["provider"]["last_resort_models"]])
+        build.EXHAUSTED.update(cfg["provider"]["last_resort_models"])
+        with self.assertRaisesRegex(RuntimeError, "out of free-tier quota"):
+            build.generate_episode(DATE, LANG, STORIES, cfg)
+
+    def test_json_followed_by_extra_text_is_read(self):
+        body = {"candidates": [{"content": {"parts": [{"text": '{"ids": ["N02"]}\n\nHope this helps! {"x": 1}'}]}}]}
+
+        class Response:
+            status_code, text = 200, ""
+
+            def json(self):
+                return body
+
+        with mock.patch.object(build, "post_gemini", return_value=(Response(), "m")):
+            self.assertEqual(build.gemini_json_from("prompt", test_cfg()), ({"ids": ["N02"]}, "m"))
+
     def test_parallel_models_compete_and_the_best_valid_script_wins(self):
         cfg = test_cfg()
         cfg["episode"]["parallel_models"] = 3
@@ -191,6 +220,10 @@ class ModelContestTests(unittest.TestCase):
 
 
 class TextModelTests(unittest.TestCase):
+    def setUp(self):
+        build.EXHAUSTED.clear()
+        self.addCleanup(build.EXHAUSTED.clear)
+
     class Response:
         def __init__(self, status, body=None, text=""):
             self.status_code, self._body, self.text = status, body or {}, text
