@@ -55,7 +55,7 @@ hosts:
 tts:
   # Engines tried in order for each episode; one episode never mixes engines. Edge TTS needs no key and
   # is always the last resort. Override with the TTS_ORDER repository variable, e.g. "openai,edge".
-  order: [gemini, openai, edge]
+  order: [gemini, google_cloud, openai, edge]
   # Gemini and OpenAI voices speak quickly; target-language lines are slowed to this tempo for learners
   # (pitch preserved). Japanese navigation keeps its natural pace. Edge already uses a learner pace.
   target_language_tempo: 0.85
@@ -72,8 +72,18 @@ tts:
     # Appended to every line so the hand-over pauses stand out when the take is split into lines.
     line_break_tag: "[long pause]"
     max_attempts: 4
+  google_cloud:
+    # Cloud Text-to-Speech, Chirp 3: HD (same voice family as Gemini). Free tier: 1M characters/month.
+    # Needs the Cloud Text-to-Speech API enabled on the key's project; GOOGLE_TTS_API_KEY, else GEMINI_API_KEY.
+    voices:
+      MC_F: "Aoede"
+      MC_M: "Puck"
+    # Kept below the free tier; usage is committed to state/google-tts-usage.json by the daily workflow.
+    monthly_character_budget: 950000
+    usage_file: "state/google-tts-usage.json"
+    max_attempts: 5
   openai:
-    # Used when OPENAI_API_KEY is set; one request per line. OPENAI_TTS_MODEL overrides.
+    # Paid. Used only when OPENAI_API_KEY is set; one request per line. OPENAI_TTS_MODEL overrides.
     models: ["gpt-4o-mini-tts", "tts-1-hd"]
     voices:
       MC_F: "coral"

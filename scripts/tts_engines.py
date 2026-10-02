@@ -5,8 +5,10 @@
    "[long pause]" tag, which makes the hand-over between lines the longest pauses in the take;
    align_lines() then picks one pause per boundary. Verified on a 24-line take: every clip matched
    its line.
-2. OpenAI GPT TTS: one request per line (exact line timing), when OPENAI_API_KEY is set.
-3. Edge TTS lives in render_language_episodes.py and is the last resort.
+2. Google Cloud TTS, Chirp 3: HD voices: one request per line (exact timing) inside the 1M
+   characters a month free tier, guarded by a monthly budget kept in the repository.
+3. OpenAI GPT TTS (paid): one request per line, only when OPENAI_API_KEY is set.
+4. Edge TTS lives in render_language_episodes.py and is the last resort.
 
 Gemini and OpenAI return no word timings, so karaoke timings are estimated inside each line.
 Shadowing ("slow") lines are time-stretched after synthesis so every engine slows them the same way.
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import math
 import os
 import re
@@ -238,6 +241,113 @@ class OpenAITTS:
                 raise TTSError("OpenAI TTS returned no audio")
             return AudioSegment(data=response.content, sample_width=2, frame_rate=24000, channels=1)
         raise TTSError("OpenAI TTS: retries exhausted")
+
+
+# --------------------------------------------------------------------------- Google Cloud
+
+
+class GoogleCloudTTS:
+    """Google Cloud Text-to-Speech, Chirp 3: HD voices (the same voice family as Gemini TTS).
+
+    The free tier covers 1M Chirp 3: HD characters a month. Lines are synthesised one request each,
+    so line timing is exact, and the pace is set natively (speakingRate) instead of time-stretching.
+    A monthly character budget, stored in the repository, keeps usage inside the free tier: an episode
+    that would cross it is left to the next engine.
+    """
+
+    name = "google_cloud"
+    native_pace = True
+    ENDPOINT = "https://texttospeech.googleapis.com/v1/text:synthesize"
+    LANGUAGE_CODES = {"zh-CN": "cmn-CN"}
+
+    def __init__(self, cfg: dict, api_key: str | None = None, session=None, sleep=time.sleep,
+                 usage_path: Path | None = None, month: str | None = None):
+        settings = cfg["tts"]["google_cloud"]
+        key = api_key if api_key is not None else (os.getenv("GOOGLE_TTS_API_KEY", "") or os.getenv("GEMINI_API_KEY", ""))
+        self.api_key = key.strip()
+        if not self.api_key:
+            raise TTSError("GOOGLE_TTS_API_KEY (or GEMINI_API_KEY) is not configured")
+        self.voices = settings["voices"]
+        self.budget = int(settings.get("monthly_character_budget", 950_000))
+        self.max_attempts = int(settings.get("max_attempts", 5))
+        self.learner_tempo = float(cfg["tts"].get("target_language_tempo", 1.0))
+        self.slow_tempo = tempo_from_rate(str(cfg.get("learning", {}).get("slow_rate", "-25%")))
+        self.session = session or requests.Session()
+        self.sleep = sleep
+        self.usage_path = usage_path or Path(__file__).resolve().parents[1] / settings.get("usage_file", "state/google-tts-usage.json")
+        self.month = month or time.strftime("%Y-%m")
+        self.model_in_use = "chirp3-hd"
+        self.disabled = ""
+
+    # -- monthly budget -------------------------------------------------------------------------
+    def used(self) -> int:
+        try:
+            data = json.loads(self.usage_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 0
+        return int(data.get(self.month, 0)) if isinstance(data, dict) else 0
+
+    def record(self, characters: int) -> None:
+        try:
+            data = json.loads(self.usage_path.read_text(encoding="utf-8"))
+            data = data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            data = {}
+        data[self.month] = int(data.get(self.month, 0)) + characters
+        self.usage_path.parent.mkdir(parents=True, exist_ok=True)
+        self.usage_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    # -- synthesis ------------------------------------------------------------------------------
+    def voice_name(self, utterance: dict) -> tuple[str, str]:
+        code = self.LANGUAGE_CODES.get(utterance["language"], utterance["language"])
+        return code, f"{code}-Chirp3-HD-{self.voices[utterance['speaker']]}"
+
+    def rate(self, utterance: dict) -> float:
+        if utterance.get("slow"):
+            return self.slow_tempo
+        return 1.0 if utterance["language"] == "ja-JP" else self.learner_tempo
+
+    def render(self, utterances: list[dict]) -> list[AudioSegment]:
+        if self.disabled:
+            raise TTSError(self.disabled)
+        characters = sum(len(u["text"]) for u in utterances)
+        used = self.used()
+        if used + characters > self.budget:
+            raise TTSError(f"monthly free-tier budget would be exceeded ({used:,} + {characters:,} > {self.budget:,} characters)")
+        clips = [trim_silence(self.line(u)) for u in utterances]
+        self.record(characters)
+        return clips
+
+    def line(self, utterance: dict) -> AudioSegment:
+        language, voice = self.voice_name(utterance)
+        payload = {
+            "input": {"text": utterance["text"]},
+            "voice": {"languageCode": language, "name": voice},
+            "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 24000, "speakingRate": self.rate(utterance)},
+        }
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = self.session.post(self.ENDPOINT, params={"key": self.api_key}, json=payload, timeout=(20, 120))
+            except requests.RequestException as exc:
+                if attempt == self.max_attempts:
+                    raise TTSError(f"Cloud TTS request failed: {exc}") from exc
+                self.sleep(min(30, 3 * attempt))
+                continue
+            status = response.status_code
+            if status in (401, 403):
+                # Typically "Cloud Text-to-Speech API has not been used in project ... or it is disabled".
+                self.disabled = f"Cloud TTS refused the request (HTTP {status}): {response.text[:200]}"
+                raise TTSError(self.disabled)
+            if status in RETRYABLE and attempt < self.max_attempts:
+                self.sleep(retry_delay(response) or min(30, 3 * 2 ** (attempt - 1)))
+                continue
+            if status >= 400:
+                raise TTSError(f"Cloud TTS HTTP {status}: {response.text[:300]}")
+            content = response.json().get("audioContent")
+            if not content:
+                raise TTSError("Cloud TTS returned no audio")
+            return AudioSegment.from_file(io.BytesIO(base64.b64decode(content)), format="wav")
+        raise TTSError("Cloud TTS: retries exhausted")
 
 
 # --------------------------------------------------------------------------- shared helpers

@@ -47,6 +47,7 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
+      GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_TTS_MODEL: ${{ vars.OPENAI_TTS_MODEL }}
       TTS_ORDER: ${{ vars.TTS_ORDER }}
@@ -151,6 +152,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/episodes.json docs/feed.xml docs/feeds docs/episodes
+          git add state 2>/dev/null || true  # free-tier usage counters (Cloud TTS budget)
           git diff --cached --quiet || git commit -m "publish: Journey Talk ${{ steps.day.outputs.date }}"
           git pull --rebase origin main
           git push origin HEAD:main

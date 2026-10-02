@@ -247,13 +247,14 @@ RSS 3媒体 → Geminiが共通の3記事を選択
 
 Repository secret に `GEMINI_API_KEY`（[Google AI Studio](https://aistudio.google.com/apikey) で発行）を登録してください。未設定の場合、ワークフローは最初の検査で停止し、Job Summaryに設定手順を表示します。任意で Repository variable `GEMINI_MODEL` によりモデルを上書きできます（既定は `cloud_languages.yaml` の `gemini-2.5-flash`）。
 
-### 音声合成（TTS）：Gemini → GPT → Edge の3段階
+### 音声合成（TTS）：Gemini → Google Cloud → (GPT) → Edge
 
-`cloud_languages.yaml` の `tts.order`（既定 `[gemini, openai, edge]`）の順に試し、失敗した回は次のエンジンで丸ごと作り直します（1つの回で声が混ざることはありません）。Repository variable `TTS_ORDER`（例: `openai,edge`）で順番を変えられます。
+`cloud_languages.yaml` の `tts.order`（既定 `[gemini, google_cloud, openai, edge]`）の順に試し、失敗した回は次のエンジンで丸ごと作り直します（1つの回で声が混ざることはありません）。キーのないエンジンは自動で飛ばします。Repository variable `TTS_ORDER` で順番を変えられます。すべて無料枠で完結し、有料の GPT はキーを登録した場合だけ使われます。
 
 1. **Gemini TTS**（`GEMINI_API_KEY`）: 無料枠は1モデルにつき1日約10リクエストなので、**1エピソードを1回の2話者リクエスト**で合成し、行ごとに切り分けます。各行の末尾に `[long pause]` を付けて話者交代の間を長くし、行の長さの予測と間の長さから切れ目を選びます（24行の検証で全行一致）。モデルは `gemini-3.8-flash-tts` → `gemini-3.8-flash-lite-tts` → `gemini-3.1-flash-tts-preview` → `gemini-2.5-flash-preview-tts` の順に試し、1日の上限に達したモデルは待たずに次へ進みます。声はミナ=`Aoede`、レン=`Puck`。
-2. **OpenAI GPT TTS**（`OPENAI_API_KEY` を登録した場合）: 1行ずつ合成するので行のタイミングは正確です。モデルは `gpt-4o-mini-tts`（`OPENAI_TTS_MODEL` で変更可）、声は `coral` / `ash`。行ごとに話す言語を指示します。
-3. **Edge TTS**: キー不要の最後の砦。単語ごとの正確なタイミングも取れます。
+2. **Google Cloud TTS — Chirp 3: HD**（無料枠 月100万文字）: Gemini と同じ系統の声（Aoede / Puck）で1行ずつ合成し、行のタイミングは正確、話速もAPIで指定します。使用文字数を `state/google-tts-usage.json` に記録し、月95万文字（`monthly_character_budget`）を超える回は使わずに次へ回すので、無料枠を超えません。使うにはキーのプロジェクトで「Cloud Text-to-Speech API」を有効化してください（キーは `GOOGLE_TTS_API_KEY`、なければ `GEMINI_API_KEY`）。
+3. **OpenAI GPT TTS**（有料。`OPENAI_API_KEY` を登録した場合だけ）: 1行ずつ合成するので行のタイミングは正確です。モデルは `gpt-4o-mini-tts`（`OPENAI_TTS_MODEL` で変更可）、声は `coral` / `ash`。行ごとに話す言語を指示します。
+4. **Edge TTS**: キー不要の最後の砦。単語ごとの正確なタイミングも取れます。
 
 - Gemini と GPT の声は速いので、学習言語の行は0.85倍速に伸ばします（ピッチは保持。`tts.target_language_tempo`）。🐢の行は0.75倍速です。
 - 台本の長さは、言語ごとの実測の話速（`episode.speech_rates`）で見積もります。完成音声の受け入れ範囲は9〜18分（`episode.audio_seconds`）で、話速の違うエンジンに切り替わっても公開できます。

@@ -657,6 +657,56 @@ class SpeechEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(self.tts.TTSError, "no remaining quota"):
             engine.render(self.utterances[:1])
 
+    def cloud(self, responses, calls, used=0, budget=None):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        usage = Path(temporary.name) / "usage.json"
+        if used:
+            usage.write_text(json.dumps({"2026-10": used}))
+        cfg = copy.deepcopy(BASE_CFG)
+        if budget is not None:
+            cfg["tts"]["google_cloud"]["monthly_character_budget"] = budget
+        engine = self.tts.GoogleCloudTTS(cfg, api_key="k", session=self.session(responses, calls), sleep=self.sleeps.append, usage_path=usage, month="2026-10")
+        return engine, usage
+
+    def wav_body(self, ms=900):
+        buffer = io.BytesIO()
+        self.Sine(300).to_audio_segment(duration=ms).set_frame_rate(24000).set_channels(1).export(buffer, format="wav")
+        return {"audioContent": base64.b64encode(buffer.getvalue()).decode()}
+
+    def test_cloud_tts_uses_chirp3_hd_voices_and_native_pace(self):
+        calls = []
+        engine, usage = self.cloud([self.Response(200, self.wav_body()) for _ in self.utterances], calls)
+        zh = {"speaker": "MC_M", "language": "zh-CN", "text": "我们走吧。"}
+        clips = engine.render(self.utterances)
+        engine.session = self.session([self.Response(200, self.wav_body())], calls)
+        engine.render([zh])
+        bodies = [c[1]["json"] for c in calls]
+        self.assertEqual(bodies[0]["voice"], {"languageCode": "ja-JP", "name": "ja-JP-Chirp3-HD-Aoede"})
+        self.assertEqual(bodies[1]["voice"]["name"], "es-ES-Chirp3-HD-Puck")
+        self.assertEqual(bodies[-1]["voice"], {"languageCode": "cmn-CN", "name": "cmn-CN-Chirp3-HD-Puck"})
+        self.assertEqual([b["audioConfig"]["speakingRate"] for b in bodies[:4]], [1.0, 0.85, 0.85, 0.75])
+        self.assertTrue(all(800 <= len(c) <= 1000 for c in clips))
+        self.assertTrue(engine.native_pace)
+        recorded = json.loads(usage.read_text())["2026-10"]
+        self.assertEqual(recorded, sum(len(u["text"]) for u in self.utterances) + len(zh["text"]))
+
+    def test_cloud_tts_never_exceeds_the_monthly_free_budget(self):
+        calls = []
+        engine, usage = self.cloud([], calls, used=949_990, budget=950_000)
+        with self.assertRaisesRegex(self.tts.TTSError, "budget would be exceeded"):
+            engine.render(self.utterances)
+        self.assertEqual(calls, [], "no request may be sent once the budget is reached")
+
+    def test_cloud_tts_disabled_api_is_reported_once(self):
+        calls = []
+        refused = self.Response(403, text="Cloud Text-to-Speech API has not been used in project 1 before or it is disabled")
+        engine, _ = self.cloud([refused], calls)
+        for _ in range(2):
+            with self.assertRaisesRegex(self.tts.TTSError, "HTTP 403"):
+                engine.render(self.utterances)
+        self.assertEqual(len(calls), 1)
+
     def test_slow_rate_and_time_stretch(self):
         self.assertEqual(self.tts.tempo_from_rate("-25%"), 0.75)
         self.assertEqual(self.tts.tempo_from_rate("+0%"), 1.0)
@@ -675,7 +725,7 @@ class SpeechEngineTests(unittest.TestCase):
             render = load_script("render_language_episodes")
         except ImportError as exc:
             self.skipTest(f"audio dependencies unavailable: {exc}")
-        self.assertEqual(render.tts_order(BASE_CFG), ["gemini", "openai", "edge"])
+        self.assertEqual(render.tts_order(BASE_CFG), ["gemini", "google_cloud", "openai", "edge"])
         with mock.patch.dict("os.environ", {"TTS_ORDER": "openai"}):
             self.assertEqual(render.tts_order(BASE_CFG), ["openai", "edge"])
 
@@ -694,7 +744,7 @@ class SpeechEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, mock.patch.object(render, "synthesize", fake_edge):
             paths, _, engine = render.render_audio(BASE_CFG, self.utterances[:1], Path(temporary), [gemini, openai])
         self.assertEqual((paths, engine, gemini.calls, openai.calls), (["edge.mp3"], "edge", 1, 1))
-        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "", "OPENAI_API_KEY": ""}):
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "", "GOOGLE_TTS_API_KEY": "", "OPENAI_API_KEY": ""}):
             self.assertEqual(render.open_engines(BASE_CFG), [])
 
 
