@@ -572,6 +572,8 @@ def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prom
             spoken_only = min(partial, key=lambda e: abs(e["estimated_seconds"] - ideal))
         content_errors = [r["error"] for r in results if r.get("error") and not r.get("unavailable")]
         if not content_errors:
+            if contestant_orders(cfg) not in ([], orders):
+                continue  # quotas ran out during this round; the next round uses the models still available
             raise RuntimeError(f"{lang['slug']}: no Gemini model answered ({results[0].get('error', '')[:300]})")
         # Length problems are the most common and the most actionable, so prefer them as feedback.
         feedback = next((e for e in content_errors if "duration" in e or "utterance count" in e), content_errors[0])

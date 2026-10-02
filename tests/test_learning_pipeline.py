@@ -155,6 +155,22 @@ class ModelContestTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "out of free-tier quota"):
             build.generate_episode(DATE, LANG, STORIES, cfg)
 
+    def test_quota_running_out_mid_round_moves_to_the_last_resort(self):
+        cfg = test_cfg()
+        cfg["episode"]["parallel_models"] = 2
+        used = []
+
+        def fake(prompt, _cfg, models):
+            used.append(models[0])
+            if models[0] in cfg["provider"]["models"]:
+                build.EXHAUSTED.update(cfg["provider"]["models"])  # every regular model hits its daily quota
+                raise RuntimeError("no Gemini model answered: HTTP 429")
+            return raw_episode(), models[0]
+
+        with mock.patch.object(build, "gemini_json_from", side_effect=fake):
+            episode = build.generate_episode(DATE, LANG, STORIES, cfg)
+        self.assertEqual(episode["script_model"], cfg["provider"]["last_resort_models"][0])
+
     def test_json_followed_by_extra_text_is_read(self):
         body = {"candidates": [{"content": {"parts": [{"text": '{"ids": ["N02"]}\n\nHope this helps! {"x": 1}'}]}}]}
 
