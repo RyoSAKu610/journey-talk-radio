@@ -12,7 +12,10 @@ episode:
   temperature: 0.35
   max_output_tokens: 32768
   stories: 3
-  generation_attempts: 4
+  generation_attempts: 3
+  # Each round asks this many models in parallel (each has its own free-tier quota) and keeps the best
+  # valid script, so one overloaded or terse model no longer costs the episode.
+  parallel_models: 3
   learner_level: "CEFR B1"
   # Finished audio accepted by the renderer. The script is sized for 600-900 s with Gemini; the fallback
   # engines speak at a different pace, so the audio check is wider than the script contract.

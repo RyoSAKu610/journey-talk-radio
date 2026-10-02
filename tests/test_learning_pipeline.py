@@ -41,7 +41,15 @@ STORIES = [
 def test_cfg() -> dict:
     cfg = copy.deepcopy(BASE_CFG)
     cfg["episode"]["minimum_seconds"] = 30
+    cfg["episode"]["parallel_models"] = 1
     return cfg
+
+
+def as_contestant(fake):
+    """Adapt a fake(prompt, cfg) -> answer to gemini_json_from(prompt, cfg, models) -> (answer, model)."""
+    def call(prompt, cfg, models=None):
+        return fake(prompt, cfg), (models or ["test-model"])[0]
+    return call
 
 
 LINES = 56
@@ -129,6 +137,59 @@ class EpisodeValidationTests(unittest.TestCase):
             build.validate_learning(sparse, episode, cfg)
 
 
+class ModelContestTests(unittest.TestCase):
+    def test_parallel_models_compete_and_the_best_valid_script_wins(self):
+        cfg = test_cfg()
+        cfg["episode"]["parallel_models"] = 3
+        short, terse_study, good = raw_episode(), raw_episode(), raw_episode()
+        short["utterances"] = short["utterances"][:20]
+        terse_study["vocabulary"] = []
+        answers = {cfg["provider"]["models"][0]: short, cfg["provider"]["models"][1]: terse_study, cfg["provider"]["models"][2]: good}
+        orders = []
+
+        def fake(prompt, _cfg, models):
+            orders.append(models)
+            return answers[models[0]], models[0]
+
+        with mock.patch.object(build, "gemini_json_from", side_effect=fake):
+            episode = build.generate_episode(DATE, LANG, STORIES, cfg)
+        self.assertEqual(sorted(o[0] for o in orders), sorted(cfg["provider"]["models"][:3]))
+        self.assertTrue(all(len(o) == len(cfg["provider"]["models"]) for o in orders), "each contestant can fall back")
+        self.assertEqual(episode["script_model"], cfg["provider"]["models"][2])
+        self.assertEqual(len(episode["vocabulary"]), 5)
+
+    def test_round_with_only_failures_feeds_the_length_error_back(self):
+        cfg = test_cfg()
+        cfg["episode"]["parallel_models"] = 2
+        short = raw_episode()
+        short["utterances"] = short["utterances"][:20]
+        prompts = []
+
+        def fake(prompt, _cfg, models):
+            prompts.append(prompt)
+            if len(prompts) <= 2:
+                if models[0] == cfg["provider"]["models"][0]:
+                    raise ValueError("Gemini returned an empty response")
+                return short, models[0]
+            return raw_episode(), models[0]
+
+        with mock.patch.object(build, "gemini_json_from", side_effect=fake):
+            episode = build.generate_episode(DATE, LANG, STORIES, cfg)
+        self.assertIn("utterance count 20", prompts[2])
+        self.assertEqual(len(episode["utterances"]), LINES)
+
+    def test_every_model_unavailable_fails_the_language(self):
+        cfg = test_cfg()
+        cfg["episode"]["parallel_models"] = 2
+
+        def fake(prompt, _cfg, models):
+            raise RuntimeError("no Gemini model answered: HTTP 503")
+
+        with mock.patch.object(build, "gemini_json_from", side_effect=fake):
+            with self.assertRaisesRegex(RuntimeError, "no Gemini model answered"):
+                build.generate_episode(DATE, LANG, STORIES, cfg)
+
+
 class TextModelTests(unittest.TestCase):
     class Response:
         def __init__(self, status, body=None, text=""):
@@ -176,7 +237,7 @@ class GenerationRetryTests(unittest.TestCase):
             prompts.append(prompt)
             return responses.pop(0)
 
-        with mock.patch.object(build, "gemini_json", side_effect=fake):
+        with mock.patch.object(build, "gemini_json_from", side_effect=as_contestant(fake)):
             episode = build.generate_episode(DATE, LANG, STORIES, cfg)
         self.assertEqual(len(prompts), 2)
         self.assertNotIn("rejected by the validator", prompts[0])
@@ -187,7 +248,7 @@ class GenerationRetryTests(unittest.TestCase):
         cfg = test_cfg()
         raw = raw_episode()
         raw["vocabulary"] = []
-        with mock.patch.object(build, "gemini_json", return_value=raw) as fake:
+        with mock.patch.object(build, "gemini_json_from", side_effect=as_contestant(lambda p, c: raw)) as fake:
             episode = build.generate_episode(DATE, LANG, STORIES, cfg)
         self.assertEqual(fake.call_count, cfg["episode"]["generation_attempts"])
         self.assertEqual(episode["vocabulary"], [])
@@ -206,7 +267,7 @@ class GenerationRetryTests(unittest.TestCase):
                 mock.patch.object(build, "load_config", return_value=cfg), \
                 mock.patch.object(build, "collect_news", return_value=STORIES), \
                 mock.patch.object(build, "choose_shared_stories", return_value=STORIES), \
-                mock.patch.object(build, "gemini_json", side_effect=fake), \
+                mock.patch.object(build, "gemini_json_from", side_effect=as_contestant(fake)), \
                 mock.patch.dict("os.environ", {"GEMINI_API_KEY": "test"}), \
                 mock.patch.object(sys, "argv", ["build", "--date", DATE, "--output-dir", temporary]):
             self.assertEqual(build.main(), 0)
@@ -345,7 +406,7 @@ class WeeklyReviewTests(unittest.TestCase):
     def run_weekly(self, cfg, fake):
         argv = ["weekly", "--date", "2026-10-04", "--output-dir", str(self.output), "--docs-dir", str(self.docs)]
         with mock.patch.object(self.weekly.daily, "load_config", return_value=cfg), \
-                mock.patch.object(self.weekly.daily, "gemini_json", side_effect=fake), \
+                mock.patch.object(self.weekly.daily, "gemini_json_from", side_effect=as_contestant(fake)), \
                 mock.patch.object(sys, "argv", argv):
             self.assertEqual(self.weekly.main(), 0)
         return json.loads((self.output / "2026-10-04" / "manifest.json").read_text(encoding="utf-8"))

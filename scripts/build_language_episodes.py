@@ -8,6 +8,7 @@ import random
 import re
 import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -41,14 +42,16 @@ def text_models(cfg: dict) -> list[str]:
 MODEL_USED: dict[str, str] = {}
 
 
-def post_gemini(payload: dict, cfg: dict):
+def post_gemini(payload: dict, cfg: dict, models: list[str] | None = None):
     """POST to the first model that answers. Retries brief overloads, then moves on to the next
-    model when one is retired (404), out of daily quota, or stays overloaded."""
+    model when one is retired (404), out of daily quota, or stays overloaded.
+
+    Returns (response, model)."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
     problems: list[str] = []
-    for model in text_models(cfg):
+    for model in models or text_models(cfg):
         response = None
         for attempt in range(1, HTTP_ATTEMPTS + 1):
             try:
@@ -73,11 +76,16 @@ def post_gemini(payload: dict, cfg: dict):
         if response.status_code >= 400:
             raise RuntimeError(f"Gemini HTTP {response.status_code}: {response.text[:1000]}")
         MODEL_USED["name"] = model
-        return response
+        return response, model
     raise RuntimeError("no Gemini model answered: " + "; ".join(problems[-4:]))
 
 
 def gemini_json(prompt: str, cfg: dict) -> dict:
+    return gemini_json_from(prompt, cfg)[0]
+
+
+def gemini_json_from(prompt: str, cfg: dict, models: list[str] | None = None) -> tuple[dict, str]:
+    """Ask the first available model in `models` for a JSON answer; returns (answer, model)."""
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -86,7 +94,7 @@ def gemini_json(prompt: str, cfg: dict) -> dict:
             "responseMimeType": "application/json",
         },
     }
-    response = post_gemini(payload, cfg)
+    response, model = post_gemini(payload, cfg, models)
     body = response.json()
     candidates = body.get("candidates") or []
     # Content problems are ValueErrors so generate_episode() retries them with feedback.
@@ -110,7 +118,7 @@ def gemini_json(prompt: str, cfg: dict) -> dict:
         result = json.loads(match.group(0))
     if not isinstance(result, dict):
         raise ValueError("Gemini response must be a JSON object")
-    return result
+    return result, model
 
 
 def collect_news(cfg: dict) -> list[dict]:
@@ -483,35 +491,76 @@ def validate_learning(data: dict, episode: dict, cfg: dict) -> dict:
     }
 
 
-def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prompt_builder=None) -> dict:
-    """Ask Gemini for one edition, feeding validator errors back into the retry prompt.
+def contestant_orders(cfg: dict) -> list[list[str]]:
+    """Model order for each parallel contestant: each starts on a different model, then falls back."""
+    models = text_models(cfg)
+    count = max(1, min(int(cfg["episode"].get("parallel_models", 1)), len(models)))
+    return [models[i:] + models[:i] for i in range(count)]
 
-    A spoken script that passes every audio contract is never thrown away just because the
-    study materials were incomplete: after the last attempt it is published without them.
+
+def run_contestant(prompt: str, order: list[str], date: str, lang: dict, stories: list[dict], cfg: dict) -> dict:
+    """One model's attempt, validated. Never raises: the outcome is described in the returned dict."""
+    try:
+        raw, model = gemini_json_from(prompt, cfg, order)
+    except ValueError as exc:
+        return {"model": order[0], "error": str(exc)}
+    except RuntimeError as exc:
+        return {"model": order[0], "error": str(exc), "unavailable": True}
+    try:
+        episode = validate_episode(raw, date, lang, stories, cfg)
+    except ValueError as exc:
+        return {"model": model, "error": str(exc)}
+    episode["script_model"] = model
+    try:
+        episode.update(validate_learning(raw, episode, cfg))
+    except ValueError as exc:
+        return {"model": model, "episode": episode, "complete": False, "error": str(exc)}
+    return {"model": model, "episode": episode, "complete": True}
+
+
+def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prompt_builder=None) -> dict:
+    """Have several models write the edition in parallel each round and keep the best valid script.
+
+    Every model has its own free-tier quota, so a round of N contestants costs nothing extra; it
+    turns "this model is overloaded" or "this model wrote too little" into a non-event. A round
+    with no valid script feeds the most useful validator error back into the next round. A spoken
+    script that passes every audio contract is never thrown away just because the study materials
+    were incomplete: after the last round it is published without them.
     """
     attempts = max(1, int(cfg["episode"].get("generation_attempts", 3)))
+    low, high = cfg["episode"]["minimum_seconds"], cfg["episode"]["maximum_seconds"]
+    ideal = low + 0.6 * (high - low)
+    orders = contestant_orders(cfg)
     feedback = ""
     spoken_only: dict | None = None
     for attempt in range(1, attempts + 1):
-        try:
-            raw = gemini_json((prompt_builder or episode_prompt)(date, lang, stories, cfg, feedback), cfg)
-            episode = validate_episode(raw, date, lang, stories, cfg)
-        except ValueError as exc:
-            feedback = str(exc)
-            print(f"[warn] {lang['slug']} attempt {attempt}/{attempts} rejected: {exc}")
-            continue
-        try:
-            episode.update(validate_learning(raw, episode, cfg))
-            return episode
-        except ValueError as exc:
-            feedback = str(exc)
-            spoken_only = spoken_only or episode
-            print(f"[warn] {lang['slug']} attempt {attempt}/{attempts} study materials rejected: {exc}")
+        prompt = (prompt_builder or episode_prompt)(date, lang, stories, cfg, feedback)
+        if len(orders) == 1:
+            results = [run_contestant(prompt, orders[0], date, lang, stories, cfg)]
+        else:
+            with ThreadPoolExecutor(max_workers=len(orders)) as pool:
+                results = list(pool.map(lambda order: run_contestant(prompt, order, date, lang, stories, cfg), orders))
+        for result in results:
+            status = "ok" if result.get("complete") else result.get("error", "")[:160]
+            print(f"[{lang['slug']}] round {attempt}/{attempts} {result['model']}: {status}")
+        complete = [r["episode"] for r in results if r.get("complete")]
+        if complete:
+            best = min(complete, key=lambda e: abs(e["estimated_seconds"] - ideal))
+            print(f"[{lang['slug']}] picked {best['script_model']} ({best['estimated_seconds']:.0f}s)")
+            return best
+        partial = [r["episode"] for r in results if r.get("episode")]
+        if partial and spoken_only is None:
+            spoken_only = min(partial, key=lambda e: abs(e["estimated_seconds"] - ideal))
+        content_errors = [r["error"] for r in results if r.get("error") and not r.get("unavailable")]
+        if not content_errors:
+            raise RuntimeError(f"{lang['slug']}: no Gemini model answered ({results[0].get('error', '')[:300]})")
+        # Length problems are the most common and the most actionable, so prefer them as feedback.
+        feedback = next((e for e in content_errors if "duration" in e or "utterance count" in e), content_errors[0])
     if spoken_only is not None:
         print(f"[warn] {lang['slug']}: publishing audio script without study materials")
         spoken_only.update(empty_learning())
         return spoken_only
-    raise RuntimeError(f"{lang['slug']}: no valid episode after {attempts} attempts (last error: {feedback})")
+    raise RuntimeError(f"{lang['slug']}: no valid episode after {attempts} rounds (last error: {feedback})")
 
 
 def write_markdown(episode: dict, path: Path) -> None:
@@ -584,6 +633,7 @@ def main() -> int:
                 "japanese_name": lang["japanese_name"],
                 "json": json_path.name,
                 "markdown": md_path.name,
+                "script_model": episode.get("script_model"),
             }
         )
         print(f"[script] {lang['japanese_name']}: {json_path}")
