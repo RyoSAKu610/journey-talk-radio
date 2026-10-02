@@ -1,14 +1,95 @@
 provider:
-  model: "gemini-2.5-flash"
+  # Script-writing models, tried in order (gemini-2.5-flash is no longer offered to new API keys).
+  # Override with the GEMINI_MODEL repository variable.
+  # Each model has its own free-tier quota (about 20 requests a day). Models that run out are skipped
+  # for the rest of the run.
+  models: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]
+  # flash-lite writes far shorter scripts (25-40 turns), so it only steps in when every model above is out.
+  last_resort_models: ["gemini-3.1-flash-lite"]
 
 episode:
   minimum_seconds: 600
   maximum_seconds: 900
-  minimum_utterances: 44
-  maximum_utterances: 68
+  minimum_utterances: 50
+  maximum_utterances: 80
   temperature: 0.35
-  max_output_tokens: 8192
+  max_output_tokens: 32768
   stories: 3
+  generation_attempts: 3
+  # Each round asks this many models in parallel (each has its own free-tier quota) and keeps the best
+  # valid script, so one overloaded or terse model no longer costs the episode.
+  parallel_models: 3
+  learner_level: "CEFR B1"
+  # Finished audio accepted by the renderer. The script is sized for 600-900 s with Gemini; the fallback
+  # engines speak at a different pace, so the audio check is wider than the script contract.
+  audio_seconds: [540, 1080]
+  # Spoken characters per second (spaces ignored for ja/zh/ko), measured on Gemini 3.8 Flash TTS after
+  # tts.target_language_tempo. Used to size scripts. ja/es/ru/zh come from full episodes (2026-10-01/02);
+  # de/ko are not measured yet: refine them from real runs (render logs each episode's duration).
+  speech_rates:
+    ja-JP: 7.5
+    es-ES: 15.8
+    de-DE: 16.0
+    ru-RU: 13.5
+    zh-CN: 4.6
+    ko-KR: 5.2
+
+learning:
+  vocabulary_min: 5
+  vocabulary_max: 10
+  quiz_min: 3
+  quiz_max: 5
+  max_slow_utterances: 10
+  slow_rate: "-25%"
+  shadowing_pause_ms: [1200, 2000]
+
+weekly_review:
+  # Built on Sundays (Japan time) by daily-multilang.yml, or on demand with its weekly_review input.
+  lookback_days: 7
+  max_expressions: 30
+
+hosts:
+  MC_F: "ミナ"
+  MC_M: "レン"
+
+tts:
+  # Engines tried in order for each episode; one episode never mixes engines. Edge TTS needs no key and
+  # is always the last resort. Override with the TTS_ORDER repository variable, e.g. "openai,edge".
+  order: [gemini, google_cloud, openai, edge]
+  # Gemini and OpenAI voices speak quickly; target-language lines are slowed to this tempo for learners
+  # (pitch preserved). Japanese navigation keeps its natural pace. Edge already uses a learner pace.
+  target_language_tempo: 0.85
+  gemini:
+    # Free tier: about 10 requests per model per day, so the whole episode is one multi-speaker request,
+    # split into lines afterwards. Tried in order; GEMINI_TTS_MODEL overrides.
+    models: ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"]
+    voices:
+      MC_F: "Aoede"
+      MC_M: "Puck"
+    speaker_labels:
+      MC_F: "Mina"
+      MC_M: "Ren"
+    # Appended to every line so the hand-over pauses stand out when the take is split into lines.
+    line_break_tag: "[long pause]"
+    max_attempts: 4
+  google_cloud:
+    # Cloud Text-to-Speech, Chirp 3: HD (same voice family as Gemini). Free tier: 1M characters/month.
+    # Needs the Cloud Text-to-Speech API enabled on the key's project; GOOGLE_TTS_API_KEY, else GEMINI_API_KEY.
+    voices:
+      MC_F: "Aoede"
+      MC_M: "Puck"
+    # Kept below the free tier; usage is committed to state/google-tts-usage.json by the daily workflow.
+    monthly_character_budget: 950000
+    usage_file: "state/google-tts-usage.json"
+    max_attempts: 5
+  openai:
+    # Paid. Used only when OPENAI_API_KEY is set; one request per line. OPENAI_TTS_MODEL overrides.
+    models: ["gpt-4o-mini-tts", "tts-1-hd"]
+    voices:
+      MC_F: "coral"
+      MC_M: "ash"
+    instructions: "Speak in {language} as a warm, relaxed radio host chatting naturally with a co-host. Use native pronunciation."
+    max_attempts: 5
 
 qa:
   max_silence_seconds: 3.0

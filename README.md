@@ -231,47 +231,98 @@ python scripts/youtube_oauth_setup.py client_secrets.json
 SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要です。登録後の新エピソードは、Actionsが更新する同じRSSから自動取得されます。
 
 
-## 6言語 × 各約10分のクラウド版
+## 5言語 × 各10〜15分のクラウド版（主系統）
 
-新しい `.github/workflows/daily-multilang.yml` が日次の主系統です。英語・ドイツ語・スペイン語・ロシア語・中国語・韓国語をそれぞれ独立した約10分番組として生成します。
+`.github/workflows/daily-multilang.yml` が日次の主系統です（毎日07:00 JST）。ドイツ語・スペイン語・ロシア語・中国語・韓国語を、それぞれ独立した10〜15分の番組として生成します。
 
-各番組は3件ずつ別の記事を割り当て、対象言語の会話と日本語解説を組み合わせます。6言語合計で18件の異なる記事レコードを使い、音声はEdge TTS、実行基盤はGitHub Actionsです。
+```text
+RSS 3媒体 → Geminiが共通の3記事を選択
+  → 言語ごとに台本＋学習教材をGeminiで生成（検証エラーを返して最大3回再試行）
+  → Gemini TTSで音声化（失敗時はEdge TTS。復習パートは🐢ゆっくり再生＋シャドーイング用の間）
+  → 全デコード・無音検査・Whisper照合
+  → GitHub Release（MP3・台本）＋ GitHub Pages（学習プレーヤー・RSS）
+```
 
-### LLMルーティング
+### 必要な設定
 
-優先順は次の通りです。
+Repository secret に `GEMINI_API_KEY`（[Google AI Studio](https://aistudio.google.com/apikey) で発行）を登録してください。未設定の場合、ワークフローは最初の検査で停止し、Job Summaryに設定手順を表示します。任意で Repository variable `GEMINI_MODEL` によりモデルを上書きできます（既定は `cloud_languages.yaml` の `gemini-2.5-flash`）。
 
-1. Venice API — 推奨。既定モデルは `z-ai-glm-5-3-flash`
-2. Featherless API — 任意のフォールバック
-3. Abliteration API — 任意のフォールバック
+### 音声合成（TTS）：Gemini → Google Cloud → (GPT) → Edge
 
-GitHub ActionsのRepository secretに最低1つのAPIキーを登録してください。推奨は `VENICE_API_KEY` です。
+`cloud_languages.yaml` の `tts.order`（既定 `[gemini, google_cloud, openai, edge]`）の順に試し、失敗した回は次のエンジンで丸ごと作り直します（1つの回で声が混ざることはありません）。キーのないエンジンは自動で飛ばします。Repository variable `TTS_ORDER` で順番を変えられます。すべて無料枠で完結し、有料の GPT はキーを登録した場合だけ使われます。
 
-任意フォールバック:
-- `FEATHERLESS_API_KEY`
-- Repository variable `FEATHERLESS_MODEL`（省略時は設定ファイル既定値）
-- `ABLITERATION_API_KEY`
+1. **Gemini TTS**（`GEMINI_API_KEY`）: 無料枠は1モデルにつき1日約10リクエストなので、**1エピソードを1回の2話者リクエスト**で合成し、行ごとに切り分けます。各行の末尾に `[long pause]` を付けて話者交代の間を長くし、行の長さの予測と間の長さから切れ目を選びます（24行の検証で全行一致）。モデルは `gemini-3.8-flash-tts` → `gemini-3.8-flash-lite-tts` → `gemini-3.1-flash-tts-preview` → `gemini-2.5-flash-preview-tts` の順に試し、1日の上限に達したモデルは待たずに次へ進みます。声はミナ=`Aoede`、レン=`Puck`。
+2. **Google Cloud TTS — Chirp 3: HD**（無料枠 月100万文字）: Gemini と同じ系統の声（Aoede / Puck）で1行ずつ合成し、行のタイミングは正確、話速もAPIで指定します。使用文字数を `state/google-tts-usage.json` に記録し、月95万文字（`monthly_character_budget`）を超える回は使わずに次へ回すので、無料枠を超えません。使うにはキーのプロジェクトで「Cloud Text-to-Speech API」を有効化してください（キーは `GOOGLE_TTS_API_KEY`、なければ `GEMINI_API_KEY`）。
+3. **OpenAI GPT TTS**（有料。`OPENAI_API_KEY` を登録した場合だけ）: 1行ずつ合成するので行のタイミングは正確です。モデルは `gpt-4o-mini-tts`（`OPENAI_TTS_MODEL` で変更可）、声は `coral` / `ash`。行ごとに話す言語を指示します。
+4. **Edge TTS**: キー不要の最後の砦。単語ごとの正確なタイミングも取れます。
 
-旧 `daily-radio.yml` は既存成果物との互換用として残し、日次scheduleは停止して手動実行専用にしています。
+- Gemini と GPT の声は速いので、学習言語の行は0.85倍速に伸ばします（ピッチは保持。`tts.target_language_tempo`）。🐢の行は0.75倍速です。
+- 台本の長さは、言語ごとの実測の話速（`episode.speech_rates`）で見積もります。完成音声の受け入れ範囲は9〜18分（`episode.audio_seconds`）で、話速の違うエンジンに切り替わっても公開できます。
+- Gemini と GPT は単語ごとのタイミングを返さないため、カラオケ表示の単語位置は行内で推定します。
+- 実測（スペイン語の回）: 65行・推定712秒の台本が、Gemini TTS の1リクエストで12.4分の音声になりました。
+
+### 学習体験
+
+各エピソードは音声に加えて、学習用の教材を生成します。
+
+- **日本語訳**: 対象言語のすべての発話に訳を付与
+- **単語・表現**: 5〜10個。中国語はピンイン、韓国語はローマ字、ロシア語はアクセント記号付きの読み
+- **リスニングクイズ**: 3〜5問。正解位置は決定的にシャッフル
+- **ゆっくり復唱**: 復習パートの重要文を-25%速度で再読み上げし、続けて真似するための間を挿入
+- **固定ホスト**: ミナ（MC_F）とレン（MC_M）。名前は `cloud_languages.yaml` の `hosts` で変更可
+- **学習者レベル**: `episode.learner_level`（既定 `CEFR B1`）で語彙と文の難しさを調整
+
+教材の検証に3回とも失敗した場合でも、音声台本として有効なら教材なしで公開します。1言語の生成に失敗しても、他の言語は公開されます（失敗は `manifest.json` の `failed` とActionsの警告に記録）。
+
+### Webプレーヤー（GitHub Pages）
+
+`https://<owner>.github.io/<repo>/` で、スマホ向けの学習プレーヤーが使えます。
+
+- 音声と同期するスクリプト（再生中の文をハイライト、タップでその文へ移動）
+- **カラオケ表示**: Edge TTS の WordBoundary から、いま発音している単語をハイライト
+- **🔁 1文リピート**（シャドーイング用）、前後の文へ移動、再生速度 0.75〜1.25×
+- **🎤 発音チェック**: ブラウザの音声認識（Web Speech API）で読み上げを聞き取り、お手本と比較して点数と聞き取れなかった語を表示（Chrome / Edge / Safari。非対応ブラウザではボタン非表示）
+- **ブラインドモード**: 対象言語の文をぼかし、聴き終えた文から表示
+- 単語帳（間隔反復: 1→3→7→14→30日）、Anki用TSV書き出し
+- クイズ、聴了記録、連続学習日数（ブラウザのlocalStorageに保存）
+- **⬇ オフライン保存（PWA）**: 公開から3日以内の回を端末に保存し、電波がなくても同期スクリプト・シーク・1文リピートつきで再生。ホーム画面に追加してアプリとして使用可
+- **🔄 端末間の引き継ぎ**: 学習記録を引き継ぎリンクかファイルで別端末へ移して統合（サーバー不要。データはURLの `#` 以降に入り送信されない）
+- キーボード操作（Space / ← → / R）とロック画面の操作（Media Session）
+
+### 週末まとめ回
+
+日曜日（日本時間）は、各言語でその週に出た単語・表現だけを使った復習回（`<slug>-weekly`）も生成します。新しい場面での使い方、「〇〇って何て言う？」の練習、🐢ゆっくり復唱で構成されます。手動実行時は `weekly_review` を有効にすると任意の日に作れます。表現が少ない週や生成に失敗した言語はスキップし、通常回の公開は止めません。
+
+### オフライン用音声とカバー画像
+
+- render は192kbpsの本編に加えて、64kbpsモノラルの軽量版（`*.offline.mp3`）を同じタイムラインで出力します。軽量版もReleaseに置かれ、デプロイ時に直近3日分だけをPagesへ配置します（gitにはコミットしません）。Release上のMP3はCORS非対応で、キャッシュしてもシークできないため、同一オリジンの軽量版を使います。
+- カバー画像（3000×3000）とアプリアイコンは `scripts/make_covers.py` で生成し、`docs/covers/`・`docs/icons/` にコミット済みです。デザインや言語を変えたときだけ再生成してください:
+  `python scripts/make_covers.py --font /path/to/NotoSansCJK.ttc`
 
 ### 毎日の成果物
 
-`daily-multilang.yml` は、各言語について次を作ります。
-
 ```text
-output/languages/YYYY-MM-DD/en.json
-output/languages/YYYY-MM-DD/de.json
-output/languages/YYYY-MM-DD/es.json
-output/languages/YYYY-MM-DD/ru.json
-output/languages/YYYY-MM-DD/zh.json
-output/languages/YYYY-MM-DD/ko.json
+output/languages/YYYY-MM-DD/{de,es,ru,zh,ko}.json   台本＋教材（正本）
+output/languages/YYYY-MM-DD/{slug}.md               訳・単語表・クイズ付きの台本
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-{slug}.mp3
+build/languages/YYYY-MM-DD/media-manifest.json      各発話の開始・終了秒（timeline）を含む
 
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-en.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-de.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-es.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ru.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-zh.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ko.mp3
+docs/episodes.json                                  エピソード一覧
+docs/episodes/YYYY-MM-DD/{slug}.json                プレーヤー用データ（同期スクリプト・単語・クイズ）
+docs/episodes/YYYY-MM-DD/{slug}.vtt                 WebVTT字幕（podcast:transcript）
+docs/feed.xml                                       全言語のPodcast RSS
+docs/feeds/{slug}.xml                               言語別のPodcast RSS（カバー画像つき）
+docs/offline/YYYY-MM-DD/*.offline.mp3               オフライン保存用（デプロイ時のみ配置）
 ```
 
-定期実行では6本のMP3を同日のGitHub Releaseへ公開します。
+Podcastアプリでは、学びたい言語の `feeds/{slug}.xml` だけを購読できます。各エピソードの説明欄には要約・今日の表現・学習ページへのリンクが入り、対応アプリでは字幕（transcript）も表示されます。
+
+### テスト
+
+```bash
+python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
+```
+
+台本・教材の検証、再試行と部分失敗、週末まとめ回、単語タイミング（UTF-16範囲）、オフライン用音声、WebVTT、言語別RSSとカバー画像、シャドーイング用ポーズの上限を検査します。
+
+旧 `daily-radio.yml`（固定カタログ版・1本の多言語MP3）は別系統として残っています。

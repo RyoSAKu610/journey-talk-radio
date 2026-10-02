@@ -1,0 +1,16 @@
+{
+  "name": "Journey Talk — ニュースで学ぶ語学ラジオ",
+  "short_name": "Journey Talk",
+  "description": "最新ニュースで毎日学ぶ、5言語の語学ポッドキャスト。スクリプト同期・1文リピート・発音チェック・単語帳・クイズつき。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#111827",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

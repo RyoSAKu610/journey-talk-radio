@@ -7,14 +7,24 @@ on:
       - ".github/workflows/daily-multilang.yml"
       - "cloud_languages.yaml"
       - "scripts/build_language_episodes.py"
+      - "scripts/build_weekly_review.py"
       - "scripts/render_language_episodes.py"
+      - "scripts/tts_engines.py"
       - "scripts/qa_language_episodes.py"
       - "scripts/publish_multilang_site.py"
       - "docs/index.html"
+      - "docs/assets/**"
+      - "docs/sw.js"
+      - "docs/manifest.webmanifest"
       - "requirements.txt"
   schedule:
     - cron: "0 22 * * *"
   workflow_dispatch:
+    inputs:
+      weekly_review:
+        description: "Also build the weekend review editions today"
+        type: boolean
+        default: false
 
 concurrency:
   group: journey-talk-cloud-daily
@@ -36,6 +46,11 @@ jobs:
       PYTHONUNBUFFERED: "1"
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
+      GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_TTS_MODEL: ${{ vars.OPENAI_TTS_MODEL }}
+      TTS_ORDER: ${{ vars.TTS_ORDER }}
 
     steps:
       - uses: actions/checkout@v6
@@ -55,8 +70,20 @@ jobs:
 
       - name: Verify cloud contract
         run: |
-          test -n "$GEMINI_API_KEY" || { echo "GEMINI_API_KEY repository secret is required"; exit 1; }
-          python -m py_compile scripts/build_language_episodes.py scripts/render_language_episodes.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error title=GEMINI_API_KEY is not set::Add a Google AI Studio key as repository secret GEMINI_API_KEY (Settings → Secrets and variables → Actions)."
+            {
+              echo "## ❌ GEMINI_API_KEY が未設定です"
+              echo ""
+              echo "1. https://aistudio.google.com/apikey でAPIキーを発行"
+              echo "2. Settings → Secrets and variables → Actions → New repository secret"
+              echo "3. Name: \`GEMINI_API_KEY\` / Secret: 発行したキー"
+              echo "4. Actions → Journey Talk Cloud Daily → Run workflow で再実行"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
+          python -m py_compile scripts/build_language_episodes.py scripts/build_weekly_review.py scripts/render_language_episodes.py scripts/tts_engines.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
           python - <<'PY'
           import yaml
           cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))
@@ -68,14 +95,22 @@ jobs:
 
       - name: Resolve Japan date
         id: day
-        run: echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
+          echo "weekday=$(TZ=Asia/Tokyo date +%u)" >> "$GITHUB_OUTPUT"
 
       - name: Generate five language editions
         run: |
           DATE="${{ steps.day.outputs.date }}"
           python scripts/build_language_episodes.py --date "$DATE"
 
-      - name: Render five MP3 files
+      - name: Weekend review editions
+        if: steps.day.outputs.weekday == '7' || github.event.inputs.weekly_review == 'true'
+        run: |
+          DATE="${{ steps.day.outputs.date }}"
+          python scripts/build_weekly_review.py --date "$DATE" --docs-dir docs
+
+      - name: Render MP3 files
         run: |
           DATE="${{ steps.day.outputs.date }}"
           python scripts/render_language_episodes.py \
@@ -98,7 +133,7 @@ jobs:
           TAG="multilang-${DATE}"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
             --title "Journey Talk — ${DATE}" \
-            --notes "Five verified 10–15 minute language-learning MP3 editions generated from current RSS news."
+            --notes "Verified 10–15 minute language-learning MP3 editions generated from current RSS news. Study with synced scripts, vocabulary and quizzes on the Journey Talk web player."
           gh release upload "$TAG" build/languages/"$DATE"/*.mp3 --clobber
           gh release upload "$TAG" output/languages/"$DATE"/*.json output/languages/"$DATE"/*.md --clobber
           gh release upload "$TAG" build/qa/"$DATE"/* --clobber
@@ -116,10 +151,29 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/episodes.json docs/feed.xml
+          git add docs/episodes.json docs/feed.xml docs/feeds docs/episodes
+          git add state 2>/dev/null || true  # free-tier usage counters (Cloud TTS budget)
           git diff --cached --quiet || git commit -m "publish: Journey Talk ${{ steps.day.outputs.date }}"
           git pull --rebase origin main
           git push origin HEAD:main
+
+      - name: Stage offline audio for the web player
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OFFLINE_DAYS: "3"
+        run: |
+          # Low-bitrate copies are served from Pages (same origin) so the player can save them
+          # for offline listening with seeking. They are deployed, never committed.
+          DATE="${{ steps.day.outputs.date }}"
+          mkdir -p "docs/offline/$DATE"
+          cp build/languages/"$DATE"/*.offline.mp3 "docs/offline/$DATE/"
+          for i in $(seq 1 $((OFFLINE_DAYS - 1))); do
+            DAY=$(TZ=Asia/Tokyo date -d "$DATE -$i day" +%F)
+            mkdir -p "docs/offline/$DAY"
+            gh release download "multilang-$DAY" --pattern '*.offline.mp3' --dir "docs/offline/$DAY" --clobber \
+              || echo "no offline audio for $DAY"
+          done
+          du -sh docs/offline
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
