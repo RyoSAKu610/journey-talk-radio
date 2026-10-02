@@ -204,7 +204,9 @@ def length_plan(lang: dict, cfg: dict) -> str:
     a lot by language (a Chinese line needs far fewer characters than a Spanish one).
     """
     rates = {**DEFAULT_RATES, **(cfg["episode"].get("speech_rates") or {})}
-    target = (cfg["episode"]["minimum_seconds"] + cfg["episode"]["maximum_seconds"]) / 2
+    # Models consistently deliver 15-25% less text than asked for, so the plan aims high in the window.
+    low_end, high_end = cfg["episode"]["minimum_seconds"], cfg["episode"]["maximum_seconds"]
+    target = low_end + 0.75 * (high_end - low_end)
     turns, japanese_turns, target_turns = 66, 26, 40
     japanese_seconds = japanese_turns * 55 / rates["ja-JP"]
     per_turn = max(3.0, (target - 0.55 * turns - japanese_seconds - 20) / target_turns)
@@ -296,7 +298,7 @@ SLOW_FACTOR = 1.33
 SHADOWING_SECONDS = 1.6
 
 
-DEFAULT_RATES = {"ja-JP": 7.4, "zh-CN": 3.8, "ko-KR": 4.7}
+DEFAULT_RATES = {"ja-JP": 7.5, "zh-CN": 4.6, "ko-KR": 5.2}
 LATIN_RATE = 15.0
 NO_SPACE_COUNT = {"ja-JP", "zh-CN", "ko-KR"}
 

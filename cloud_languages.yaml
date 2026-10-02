@@ -1,7 +1,8 @@
 provider:
   # Script-writing models, tried in order (gemini-2.5-flash is no longer offered to new API keys).
   # Override with the GEMINI_MODEL repository variable.
-  models: ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+  # Each model has its own free-tier quota; flash-lite writes noticeably shorter scripts, so it comes last.
+  models: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
 
 episode:
   minimum_seconds: 600
@@ -11,21 +12,21 @@ episode:
   temperature: 0.35
   max_output_tokens: 32768
   stories: 3
-  generation_attempts: 3
+  generation_attempts: 4
   learner_level: "CEFR B1"
   # Finished audio accepted by the renderer. The script is sized for 600-900 s with Gemini; the fallback
   # engines speak at a different pace, so the audio check is wider than the script contract.
   audio_seconds: [540, 1080]
   # Spoken characters per second (spaces ignored for ja/zh/ko), measured on Gemini 3.8 Flash TTS after
-  # tts.target_language_tempo. Used to size scripts. ja/es come from a full episode, de/ru/zh/ko from
-  # single lines: refine them from real runs (render logs each episode's duration).
+  # tts.target_language_tempo. Used to size scripts. ja/es/ru/zh come from full episodes (2026-10-01/02);
+  # de/ko are not measured yet: refine them from real runs (render logs each episode's duration).
   speech_rates:
-    ja-JP: 7.4
+    ja-JP: 7.5
     es-ES: 15.8
     de-DE: 16.0
-    ru-RU: 11.0
-    zh-CN: 3.8
-    ko-KR: 4.7
+    ru-RU: 13.5
+    zh-CN: 4.6
+    ko-KR: 5.2
 
 learning:
   vocabulary_min: 5

@@ -305,7 +305,7 @@ def estimate_word_timings(text: str, duration_s: float) -> list[list]:
     return out
 
 
-RAW_RATES = {"ja-JP": 7.4, "es-ES": 18.6, "de-DE": 18.8, "ru-RU": 12.9, "zh-CN": 4.5, "ko-KR": 5.5}
+RAW_RATES = {"ja-JP": 7.5, "es-ES": 18.6, "de-DE": 18.8, "ru-RU": 15.9, "zh-CN": 5.4, "ko-KR": 6.1}
 
 
 def expected_seconds(text: str, language: str, rates: dict | None = None) -> float:
