@@ -1,0 +1,1883 @@
+{
+  "date": "2026-10-07",
+  "generator": "chatgpt-scheduled-generator-v1",
+  "episodes": [
+    {
+      "slug": "de",
+      "language": "de-DE",
+      "title": "Geisterteilchen, ein Phönixplanet und Europas neue KI",
+      "stories": [
+        {
+          "source": "Reuters",
+          "title": "Francis Halzen wins Nobel physics prize for Antarctic 'ghost particle' hunt",
+          "url": "https://www.reuters.com/science/francis-halzen-wins-2026-nobel-prize-physics-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "Alien 'phoenix planet' was born from the ashes of a dying star",
+          "url": "https://www.reuters.com/science/alien-phoenix-planet-was-born-ashes-dying-star-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "France's Mistral launches AI model it says outperforms some Chinese rivals",
+          "url": "https://www.reuters.com/world/china/mistral-ceo-says-new-ai-model-beats-chinese-ones-some-areas-2026-10-06/"
+        }
+      ],
+      "utterances": [
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "intro",
+          "text": "今日はドイツ語版です。科学とAIのニュースを、会話で使える表現と一緒に聞いていきます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "intro",
+          "text": "Hallo und willkommen. Heute sprechen wir über Teilchen aus dem All, einen ungewöhnlichen Planeten und ein neues europäisches KI-Modell.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Das klingt nach drei ziemlich verschiedenen Themen. Womit fangen wir an?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "story_intro",
+          "text": "Mit Francis Halzen. Er hat den Physik-Nobelpreis 2026 für seine Pionierarbeit an der Beobachtung hochenergetischer Neutrinos erhalten.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Neutrinos werden oft Geisterteilchen genannt. Der Name klingt fast wie Science-Fiction.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Genau. Sie wechselwirken nur sehr selten mit Materie. Deshalb können riesige Mengen davon durch die Erde fliegen, ohne dass wir etwas merken.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Und wie kann man etwas beobachten, das fast nie mit Materie reagiert?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Halzens Idee war, das klare Eis am Südpol als Teil eines riesigen Detektors zu nutzen. Wenn ein Neutrino doch reagiert, können winzige Lichtsignale entstehen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Ein nützliches Wort ist nachweisen. Das bedeutet, etwas durch Messungen oder Belege sichtbar oder sicher feststellbar zu machen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Zum Beispiel: Forschende konnten Teilchen aus sehr weit entfernten Regionen des Kosmos nachweisen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Kann ich nachweisen auch außerhalb der Wissenschaft benutzen?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Ja. Du kannst sagen: Die Studie weist einen Zusammenhang nach. Oder: Ich kann nachweisen, dass ich die Rechnung bezahlt habe.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Das ist praktisch. Und IceCube liefert also Informationen über Prozesse, die wir mit normalem Licht nicht so leicht sehen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Richtig. Solche kosmischen Boten können Hinweise auf extrem energiereiche Vorgänge geben, etwa in fernen Galaxien oder bei explodierenden Sternen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "ここでは nachweisen がポイントです。「証明する」「検出する」の両方に近く、文脈で意味が変わります。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Ich mag auch den Ausdruck ein Fenster zum Universum öffnen. Er beschreibt bildlich, dass eine neue Messmethode plötzlich einen neuen Blick ermöglicht.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Dann wechseln wir zum zweiten Thema. Was ist ein Phönixplanet?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "story_intro",
+          "text": "Astronomen berichten von einem Exoplaneten, der offenbar aus Material entstanden ist, das ein sterbender Stern zuvor ins All abgestoßen hatte.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Also ein Planet der zweiten Generation, nicht ein Planet, der zusammen mit einem jungen Stern entstanden ist.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Genau. Der Stern wurde zu einem Weißen Zwerg. Aus zurückgelassenem oder ausgestoßenem Material konnte sich später offenbar ein neuer Planet bilden.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Dazu passt das Verb entstehen. Es ist neutraler als erschaffen und bedeutet, dass etwas sich bildet oder entwickelt.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Ein Planet entsteht aus Material. Eine Idee entsteht im Gespräch. Und manchmal entsteht aus einem Problem eine neue Lösung.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Warum nennen Medien ihn dann Phönixplanet?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Der Phönix steht in der Mythologie für neues Leben aus der Asche. Das Bild passt zu einem Planeten, der aus den Überresten eines sterbenden Sterns hervorgegangen ist.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Das ist ein starkes Bild und gleichzeitig ein gutes Beispiel dafür, wie Wissenschaft mit Metaphern verständlicher wird.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Ja, aber man sollte Metapher und Messung trennen. Phönixplanet ist ein anschaulicher Name; die wissenschaftliche Aussage betrifft seine Entstehungsgeschichte.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "ドイツ語では entstehen が非常によく出ます。自然に「生じる・成立する」と言いたい時に便利です。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Sollen wir zur KI wechseln?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "story_intro",
+          "text": "Gern. Das französische Unternehmen Mistral hat Mistral Large 4 vorgestellt und sagt, das Modell sei in einigen Bereichen stärker als mehrere konkurrierende Open-Weight-Modelle.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Was bedeutet Open Weight in diesem Zusammenhang?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Vereinfacht gesagt werden Modellgewichte zugänglich gemacht, sodass Organisationen das Modell auf eigener Infrastruktur betreiben können. Das ist nicht dasselbe wie vollständig offene Software.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Diese Unterscheidung ist wichtig. Offen kann bei KI sehr unterschiedliche Dinge bedeuten.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Dafür ist der Ausdruck genauer gesagt nützlich. Er korrigiert oder präzisiert eine Aussage, ohne das Gespräch hart zu unterbrechen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Zum Beispiel: Das Modell ist offen, oder genauer gesagt, seine Gewichte sollen öffentlich verfügbar werden.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Reuters berichtet, dass Mistral das Modell am 27. Oktober öffentlich verfügbar machen will. Zuvor soll es frühen Zugang für Cybersicherheitsfachleute geben.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Warum ist das für Europa interessant?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Weil Mistral sich als europäische Alternative im globalen KI-Wettbewerb positioniert. Dabei geht es nicht nur um Leistung, sondern auch um Kontrolle, Infrastruktur und Sicherheit.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Damit haben alle drei Geschichten etwas gemeinsam: Neue Werkzeuge verändern, was wir beobachten oder selbst betreiben können.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "review",
+          "text": "Wiederholen wir drei Ausdrücke: etwas nachweisen, etwas entsteht und genauer gesagt.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "review_slow",
+          "text": "Etwas nachweisen. Etwas entsteht. Genauer gesagt.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Ich kann die Zahlung nachweisen. Eine neue Idee entsteht. Das System ist schnell, genauer gesagt schneller als die vorige Version.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Welcher Ausdruck ist für deinen Alltag am nützlichsten?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Für mich genauer gesagt, weil man damit im Gespräch elegant präzisieren kann, ohne komplett neu anzufangen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "trivia",
+          "text": "Kleine Gesprächsnotiz: Im Deutschen wirkt eine kurze Präzisierung mit genauer gesagt oft natürlicher als eine lange Entschuldigung für einen kleinen Versprecher.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Das macht Gespräche flüssiger. Man korrigiert die Information und geht einfach weiter.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "review",
+          "text": "Zum Schluss noch einmal: Neutrinos liefern neue Informationen aus dem Kosmos, ein Planet kann aus Sternresten entstehen, und Mistral setzt auf ein zugänglicheres Modell.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Und was war heute wichtiger: die drei Fakten oder die drei Wendungen?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Am besten beides. Nachrichten geben uns einen Kontext, und die Wendungen geben uns Sprache, die wir später selbst benutzen können.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "review",
+          "text": "今日は nachweisen、entstehen、genauer gesagt の三つを持ち帰りましょう。ニュースを覚えるだけでなく、自分の会話で一度使うのがおすすめです。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "closing",
+          "text": "Danke fürs Zuhören. Bis zur nächsten Ausgabe von Journey Talk.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "closing",
+          "text": "Bis bald. Und wenn du heute nur einen Satz sagst, mach ihn zu deinem eigenen Satz.",
+          "optional": false
+        }
+      ]
+    },
+    {
+      "slug": "es",
+      "language": "es-ES",
+      "title": "Partículas fantasma, un planeta fénix y nueva IA europea",
+      "stories": [
+        {
+          "source": "Reuters",
+          "title": "Francis Halzen wins Nobel physics prize for Antarctic 'ghost particle' hunt",
+          "url": "https://www.reuters.com/science/francis-halzen-wins-2026-nobel-prize-physics-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "Alien 'phoenix planet' was born from the ashes of a dying star",
+          "url": "https://www.reuters.com/science/alien-phoenix-planet-was-born-ashes-dying-star-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "France's Mistral launches AI model it says outperforms some Chinese rivals",
+          "url": "https://www.reuters.com/world/china/mistral-ceo-says-new-ai-model-beats-chinese-ones-some-areas-2026-10-06/"
+        }
+      ],
+      "utterances": [
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "intro",
+          "text": "今日はスペイン語版です。テンポのよい会話で、科学とAIのニュースから使える表現を拾います。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "intro",
+          "text": "Hola, bienvenido a Journey Talk. Hoy tenemos neutrinos, un planeta que parece renacer de una estrella y una nueva apuesta europea por la inteligencia artificial.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Vale, eso suena bastante variado. ¿Empezamos por el Nobel de Física?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "story_intro",
+          "text": "Sí. Francis Halzen recibió el Nobel de Física de 2026 por su trabajo pionero para detectar neutrinos de alta energía con un observatorio en el hielo antártico.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Los llaman partículas fantasma, ¿no? El nombre se queda en la cabeza.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Claro. Interactúan muy poco con la materia, así que pueden atravesar enormes cantidades de material sin dejar una señal fácil de observar.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Entonces, ¿cómo se detecta algo que casi nunca choca con nada?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "La idea fue usar el hielo limpio del Polo Sur como parte de un detector gigantesco. Cuando ocurre una interacción rara, se puede registrar una señal de luz.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Aquí tenemos un verbo muy útil: detectar. Sirve para ciencia, pero también para problemas, cambios o señales en la vida diaria.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Por ejemplo: el sistema detectó un error. También puedes decir que el médico detectó un cambio, o que notaste y detectaste un patrón.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Y qué información traen esos neutrinos?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Pueden darnos pistas sobre procesos muy energéticos del universo y sobre lugares lejanos que no entendemos solo mirando la luz visible.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Ya veo. Es como añadir otro sentido a la astronomía.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Exacto. Esa comparación funciona bien: no sustituyes lo que ya ves, sino que añades otra forma de recibir información.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "スペイン語の detectar はニュースでも日常でも頻出です。「異常を検知する」「変化を見つける」に広く使えます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Pasamos al planeta fénix?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "story_intro",
+          "text": "Vamos. Astrónomos describen un exoplaneta que parece haberse formado con material expulsado durante la muerte de una estrella que ahora es una enana blanca.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "O sea, no nació con una estrella joven como la Tierra con el Sol. Sería un planeta de segunda generación.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Eso es. El material quedó disponible después de la evolución de la estrella y, según los investigadores, de ahí pudo formarse un nuevo mundo.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Una expresión útil es surgir de. Significa aparecer o desarrollarse a partir de algo.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Una idea puede surgir de una conversación. Una oportunidad puede surgir de un problema. Y este planeta habría surgido de material estelar.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Por qué lo llaman planeta fénix?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Por la imagen mitológica del fénix que renace de sus cenizas. Es una metáfora fácil de recordar para una historia de formación después de la muerte de una estrella.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Me gusta porque explica la idea sin convertir la metáfora en el dato científico.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Sí, y esa diferencia importa. El apodo ayuda a imaginarlo; la investigación intenta explicar cómo se formó realmente.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "surgir de は「〜から生まれる」。アイデアや問題、チャンスにも使えるので会話で応用しやすいです。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Nos queda la inteligencia artificial. ¿Qué ha presentado Mistral?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "story_intro",
+          "text": "La empresa francesa presentó Mistral Large 4 y afirma que supera a varios modelos rivales de pesos abiertos en algunas áreas, entre ellas tareas de ciberseguridad.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Pesos abiertos significa que todo el proyecto es código abierto?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "No necesariamente. Significa que los pesos del modelo pueden ponerse a disposición para ejecutarlo en infraestructura propia. Conviene distinguir eso de un proyecto completamente abierto.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Claro, porque la palabra abierto puede ocultar diferencias importantes.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Ahí viene bien dicho con más precisión. Lo usas cuando quieres ajustar una idea sin frenar la conversación.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Puedes decir: es abierto; dicho con más precisión, sus pesos estarán disponibles para descarga y uso en sistemas propios.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Reuters señala que Mistral planea poner el modelo a disposición pública el 27 de octubre, con acceso previo para especialistas en ciberseguridad.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Y por qué tiene una dimensión europea?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Porque Mistral quiere competir como alternativa europea frente a grandes actores estadounidenses y chinos, con énfasis en rendimiento, control y seguridad.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Qué curioso: las tres noticias hablan de ampliar capacidades, ya sea observar el universo, entender cómo nace un planeta o ejecutar una IA.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "review",
+          "text": "Repasemos tres expresiones: detectar, surgir de y dicho con más precisión.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "review_slow",
+          "text": "Detectar. Surgir de. Dicho con más precisión.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Detecté un problema. La idea surgió de una charla. Es barato; dicho con más precisión, cuesta menos que la versión anterior.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Cuál usarías hoy mismo?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Probablemente surgir de. Es muy flexible y suena natural cuando cuentas de dónde vino una idea, una oportunidad o incluso una amistad.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "trivia",
+          "text": "Una nota de conversación: en España es normal encadenar reacciones breves como claro, vale o ya veo, pero funcionan mejor cuando responden de verdad a lo anterior.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Exacto. Si metes una muletilla en cada turno, deja de sonar espontánea y empieza a sonar automática.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "review",
+          "text": "Hoy vimos un Nobel por detectar neutrinos, un planeta formado después de la muerte de una estrella y un nuevo modelo europeo de IA.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Noticias para memorizar o noticias para practicar idioma?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Las dos cosas. El contexto hace que una expresión tenga una imagen, y esa imagen ayuda a recordarla cuando luego quieres hablar.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "review",
+          "text": "今日は detectar、surgir de、dicho con más precisión。短い相槌も、意味がある場所だけで使うと自然です。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "closing",
+          "text": "Gracias por acompañarnos. Nos escuchamos en la próxima edición de Journey Talk.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "closing",
+          "text": "Hasta pronto. Y prueba una de las expresiones de hoy en una frase tuya.",
+          "optional": false
+        }
+      ]
+    },
+    {
+      "slug": "ru",
+      "language": "ru-RU",
+      "title": "Нейтрино, планета-феникс и новая европейская модель ИИ",
+      "stories": [
+        {
+          "source": "Reuters",
+          "title": "Francis Halzen wins Nobel physics prize for Antarctic 'ghost particle' hunt",
+          "url": "https://www.reuters.com/science/francis-halzen-wins-2026-nobel-prize-physics-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "Alien 'phoenix planet' was born from the ashes of a dying star",
+          "url": "https://www.reuters.com/science/alien-phoenix-planet-was-born-ashes-dying-star-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "France's Mistral launches AI model it says outperforms some Chinese rivals",
+          "url": "https://www.reuters.com/world/china/mistral-ceo-says-new-ai-model-beats-chinese-ones-some-areas-2026-10-06/"
+        }
+      ],
+      "utterances": [
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "intro",
+          "text": "今日はロシア語版です。落ち着いた会話で、科学とAIのニュースから自然な表現を学びます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "intro",
+          "text": "Привет. Сегодня поговорим о нейтрино из далёкого космоса, необычной планете возле белого карлика и новой модели искусственного интеллекта из Европы.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Три разные темы. Начнём с Нобелевской премии по физике?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "story_intro",
+          "text": "Да. Фрэнсис Халзен получил Нобелевскую премию по физике 2026 года за пионерскую работу по регистрации нейтрино высоких энергий в антарктическом льду.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Нейтрино иногда называют частицами-призраками. Звучит образно, но почему именно так?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Они крайне редко взаимодействуют с веществом. Огромное количество нейтрино может пройти сквозь Землю, почти не оставив заметного следа.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Как тогда вообще можно их обнаружить?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Идея Халзена заключалась в том, чтобы использовать чистый лёд Южного полюса как часть гигантского детектора. Редкое взаимодействие может дать слабую световую вспышку.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Полезный глагол здесь — обнаружить. Он означает найти или заметить то, что раньше было скрыто или неизвестно.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Можно обнаружить частицу, ошибку в программе, новую закономерность или проблему в документе.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "А что такие частицы рассказывают об宇宙?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Они несут информацию о процессах очень высокой энергии. Это даёт астрономам дополнительный способ изучать далёкие галактики и взрывающиеся звёзды.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Понятно. Получается, это ещё один канал наблюдения, а не просто ещё один телескоп.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "Именно. В этом и сила идеи: мы получаем информацию, которую трудно получить только по обычному свету.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "обнаружить は「見つける・検出する」。科学だけでなく、バグや問題を発見する時にも自然です。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Перейдём к планете-фениксу?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "story_intro",
+          "text": "Исследователи описали экзопланету, которая, по их данным, сформировалась из вещества, выброшенного умирающей звездой. Теперь от той звезды остался белый карлик.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "То есть это мир второго поколения, появившийся уже после основной жизни звезды.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Да. В отличие от Земли, которая формировалась вместе с молодой Солнечной системой, этот объект связан с материалом, оставшимся после поздней стадии эволюции звезды.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Здесь удобно выражение возникнуть из. Оно подходит, когда что-то появляется или формируется из определённой причины или материала.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Идея возникла из разговора. Конфликт возник из недопонимания. Планета возникла из звёздного материала.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Почему именно феникс?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "В мифологии феникс возрождается из пепла. Поэтому образ хорошо передаёт идею нового мира, который сформировался после гибели звезды.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Красивый образ. Главное помнить, что это метафора, а не отдельный научный термин.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "Точно. Метафора помогает быстро понять историю, а научная часть объясняет происхождение объекта.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "возникнуть из は「〜から生じる」。原因を説明する時にも素材を説明する時にも使えます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Теперь к искусственному интеллекту. Что нового у Mistral?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "story_intro",
+          "text": "Французская компания представила Mistral Large 4 и утверждает, что в некоторых областях модель превосходит ряд конкурирующих моделей с открытыми весами.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Открытые веса — это то же самое, что полностью открытый исходный код?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Не обязательно. Речь о доступности весов модели, чтобы её можно было запускать на собственной инфраструктуре. Условия лицензии и открытость остальных компонентов могут отличаться.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Вот здесь особенно важно не смешивать похожие термины.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Для уточнения пригодится выражение точнее говоря. Оно мягко исправляет или конкретизирует предыдущую мысль.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Модель открытая, точнее говоря, её веса планируют сделать доступными для публичного использования.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Reuters сообщает, что публичный доступ запланирован на 27 октября, а раньше доступ должны получить специалисты по кибербезопасности.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Почему это важно именно для Европы?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Mistral позиционирует себя как европейскую альтернативу в мировой гонке ИИ. Здесь важны не только тесты производительности, но и контроль над инфраструктурой и вопросы безопасности.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Интересно, что все три истории связаны с новыми способами видеть, понимать или контролировать сложные системы.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "review",
+          "text": "Повторим три выражения: обнаружить, возникнуть из и точнее говоря.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "review_slow",
+          "text": "Обнаружить. Возникнуть из. Точнее говоря.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Я обнаружил ошибку. Идея возникла из беседы. Проект готов, точнее говоря, готова его первая версия.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Какое выражение ты бы использовал сегодня?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "Точнее говоря. Оно полезно, когда мысль уже понятна, но хочется сделать её аккуратнее без длинного объяснения.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "trivia",
+          "text": "Небольшая разговорная деталь: в русском короткое точнее говоря часто звучит естественнее, чем длинное извинение за небольшую неточность.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Да. Ты уточняешь смысл и спокойно продолжаешь разговор.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "review",
+          "text": "Сегодня были нейтрино из антарктического детектора, планета второго поколения и новая европейская модель ИИ.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Что помогает запоминать язык лучше: правило или история?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "История даёт контекст, а правило помогает не потерять форму. Вместе они работают лучше, чем отдельный список слов.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "review",
+          "text": "今日は обнаружить、возникнуть из、точнее говоря。ニュースの文脈ごと覚えると、単語だけより思い出しやすくなります。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "closing",
+          "text": "Спасибо, что слушали Journey Talk. До следующего выпуска.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "closing",
+          "text": "До встречи. Попробуй сегодня использовать хотя бы одно новое выражение в своей фразе.",
+          "optional": false
+        }
+      ]
+    },
+    {
+      "slug": "zh",
+      "language": "zh-CN",
+      "title": "幽灵粒子、凤凰行星和欧洲新人工智能模型",
+      "stories": [
+        {
+          "source": "Reuters",
+          "title": "Francis Halzen wins Nobel physics prize for Antarctic 'ghost particle' hunt",
+          "url": "https://www.reuters.com/science/francis-halzen-wins-2026-nobel-prize-physics-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "Alien 'phoenix planet' was born from the ashes of a dying star",
+          "url": "https://www.reuters.com/science/alien-phoenix-planet-was-born-ashes-dying-star-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "France's Mistral launches AI model it says outperforms some Chinese rivals",
+          "url": "https://www.reuters.com/world/china/mistral-ceo-says-new-ai-model-beats-chinese-ones-some-areas-2026-10-06/"
+        }
+      ],
+      "utterances": [
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "intro",
+          "text": "今日は中国語版です。短い句を中心に、科学とAIのニュースから自然な表現を学びます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "intro",
+          "text": "大家好。今天我们聊三个话题：来自宇宙的中微子，一颗很特别的行星，还有欧洲的新人工智能模型。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "三个话题差别很大。我们先说诺贝尔物理学奖吧？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "story_intro",
+          "text": "好。弗朗西斯·哈尔曾获得二零二六年诺贝尔物理学奖。他的重要工作，是利用南极冰层探测高能中微子。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "中微子常被叫作幽灵粒子。这个名字很容易记住。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "对。它们很少和物质发生相互作用。大量中微子可以穿过地球，却几乎不留下明显痕迹。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "那科学家怎么发现它们呢？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "哈尔曾的想法，是把南极非常纯净的冰当作巨大探测器的一部分。少数相互作用会产生可以记录的微弱光信号。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "这里有一个很实用的词：探测。它强调用设备、方法或者观察去发现原来不容易看到的东西。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "可以说探测粒子，也可以说系统探测到异常，或者设备探测到温度变化。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "这些中微子能告诉我们什么？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "它们可以带来高能宇宙过程的信息。科学家因此能用新的方式研究遥远星系和恒星爆炸。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "原来如此。就像天文学多了一种新的感官。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "这个比喻不错。不是取代普通光学观测，而是增加一种新的信息来源。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "探测 は機器や観測で「検出する」ニュアンスです。发现 よりも技術的な文脈で使いやすい語です。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "我们换到第二个话题，凤凰行星怎么样？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "story_intro",
+          "text": "研究人员发现一颗系外行星。它似乎由一颗恒星临终时抛出的物质形成。那颗恒星现在已经变成白矮星。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "也就是说，它不是和年轻恒星一起形成的，而像是第二代行星。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "对。研究认为，它的材料来自恒星晚期演化留下的物质。这和地球形成的历史很不一样。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "这里可以学一个表达：由什么形成。它能清楚说明材料或者来源。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "云由水滴形成。团队由不同背景的人形成。这个行星由恒星留下的物质形成。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "为什么叫凤凰行星？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "凤凰在神话里有从灰烬中重生的形象。这个名字用来比喻恒星死亡之后，又形成了一个新的世界。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "这个比喻很生动。不过比喻和科学结论还是要分开。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "没错。名字帮助我们记住故事，研究本身关注的是这个行星真正的形成过程。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "由…形成 は「〜によって形成される」。材料や構成を説明する時にそのまま使える型です。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "最后聊人工智能。Mistral发布了什么？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "story_intro",
+          "text": "法国公司Mistral发布了Mistral Large 4。公司表示，这个模型在一些领域超过了部分开放权重的竞争模型。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "开放权重等于完全开源吗？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "不一定。开放权重主要指模型权重可以提供给用户，让组织在自己的基础设施上运行。其他代码和许可证可能有不同条件。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "对，这个区别很重要。一个开放的说法，里面可能有很多层意思。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "想把话说得更准确，可以用更准确地说。它适合在谈话中补充或者修正前一句。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "比如：这个模型是开放的。更准确地说，它的模型权重计划公开提供。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "Reuters报道，Mistral计划在十月二十七日公开提供这个模型。在那之前，网络安全专家会获得早期访问。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "为什么这件事对欧洲特别重要？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "因为Mistral希望成为全球人工智能竞争中的欧洲选择。除了性能，人们也关注基础设施控制和安全。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "有意思。三个故事都和新的能力有关：看见以前难以看见的东西，理解新的形成过程，或者运行新的模型。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "review",
+          "text": "我们复习三个表达：探测，由什么形成，更准确地说。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "review_slow",
+          "text": "探测。由什么形成。更准确地说。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "系统探测到异常。这个团队由五个人形成。价格很低，更准确地说，比上一版低百分之十。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "你今天最想用哪一个表达？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "我会选更准确地说。它很适合真实对话，因为人说话时经常需要边说边调整自己的意思。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "trivia",
+          "text": "一个小提示：中文对话里，短短的对、是啊、原来如此很自然，但要真的回应前一句，不要每一轮都机械地加。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "没错。回应有内容，节奏才像真实交流。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "review",
+          "text": "今天我们聊了南极冰里的中微子探测，一颗第二代行星，还有法国Mistral的新模型。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "学新闻和学语言，可以放在一起吗？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "当然可以。新闻给表达一个具体场景。以后遇到相似场景时，这个表达更容易从记忆里出来。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "review",
+          "text": "今日は 探测、由…形成、更准确地说。中国語は声調を後処理で変えず、短い句の自然な流れを重視します。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "closing",
+          "text": "感谢收听Journey Talk。我们下次再见。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "closing",
+          "text": "再见。今天试着用一个新表达，说一句属于你自己的话吧。",
+          "optional": false
+        }
+      ]
+    },
+    {
+      "slug": "ko",
+      "language": "ko-KR",
+      "title": "유령 입자, 불사조 행성, 그리고 유럽의 새 인공지능 모델",
+      "stories": [
+        {
+          "source": "Reuters",
+          "title": "Francis Halzen wins Nobel physics prize for Antarctic 'ghost particle' hunt",
+          "url": "https://www.reuters.com/science/francis-halzen-wins-2026-nobel-prize-physics-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "Alien 'phoenix planet' was born from the ashes of a dying star",
+          "url": "https://www.reuters.com/science/alien-phoenix-planet-was-born-ashes-dying-star-2026-10-06/"
+        },
+        {
+          "source": "Reuters",
+          "title": "France's Mistral launches AI model it says outperforms some Chinese rivals",
+          "url": "https://www.reuters.com/world/china/mistral-ceo-says-new-ai-model-beats-chinese-ones-some-areas-2026-10-06/"
+        }
+      ],
+      "utterances": [
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "intro",
+          "text": "今日は韓国語版です。해요체を保ちながら、科学とAIのニュースを自然な掛け合いで聞きます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "intro",
+          "text": "안녕하세요. 오늘은 우주에서 오는 중성미자, 아주 특별한 행성, 그리고 유럽의 새로운 인공지능 모델 이야기를 해볼게요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "주제가 꽤 다양하네요. 먼저 노벨 물리학상 이야기부터 할까요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "story_intro",
+          "text": "좋아요. 프랜시스 핼전이 고에너지 중성미자를 관측하는 연구로 이천이십육 년 노벨 물리학상을 받았어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "중성미자를 유령 입자라고 부르기도 하죠. 이름부터 기억에 남아요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "맞아요. 중성미자는 물질과 거의 반응하지 않아요. 그래서 아주 많은 중성미자가 지구를 통과해도 흔적을 찾기가 어렵죠.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "그렇게 찾기 어려운 입자를 어떻게 관측해요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "핼전의 핵심 아이디어는 남극의 깨끗한 얼음을 거대한 검출기의 일부로 이용하는 것이었어요. 드물게 반응이 일어나면 약한 빛 신호를 기록할 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "여기서 쓸 만한 표현은 감지하다예요. 기계나 관측을 통해 잘 보이지 않던 신호나 변화를 알아낼 때 자주 써요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "입자를 감지하다, 오류를 감지하다, 온도 변화를 감지하다처럼 여러 상황에서 쓸 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "그 중성미자는 우주에 대해 어떤 정보를 줘요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "아주 높은 에너지의 우주 현상에 대한 단서를 줄 수 있어요. 먼 은하나 폭발하는 별을 다른 방식으로 연구할 수 있게 해주죠.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "그렇군요. 천문학에 새로운 감각 하나가 더 생긴 것처럼 들려요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "좋은 비유예요. 기존 관측을 없애는 게 아니라, 새로운 정보 통로를 하나 더 추가하는 거예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "감지하다 は「感知・検知する」。機械やセンサー、変化の検出などに広く使えます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "두 번째 이야기로 넘어가 볼까요? 불사조 행성이라고 불리는 행성이에요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "story_intro",
+          "text": "연구진은 죽어 가는 별이 우주로 내보낸 물질에서 만들어진 것으로 보이는 외계행성을 발견했어요. 그 별은 지금 백색왜성이 됐어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "그러면 젊은 별과 함께 만들어진 행성이 아니라, 나중에 생긴 이 세대 행성인 셈이네요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "맞아요. 지구의 형성 과정과는 달라요. 별이 진화한 뒤 남긴 물질이 새로운 행성의 재료가 된 것으로 연구진은 보고 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "여기서는 무엇에서 생겨나다라는 표현이 유용해요. 원인이나 출발점을 자연스럽게 설명할 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "아이디어가 대화에서 생겨났어요. 기회가 문제에서 생겨났어요. 이 행성은 별이 남긴 물질에서 생겨났어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "왜 불사조라는 이름을 붙였을까요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "신화 속 불사조는 재에서 다시 태어나는 이미지가 있죠. 별의 죽음 뒤에 새로운 세계가 만들어졌다는 이야기를 잘 보여주는 비유예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "비유가 강해서 기억하기 쉽네요. 그래도 비유와 실제 과학적 설명은 구분해야겠어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "맞아요. 별명은 이야기를 이해하게 돕고, 연구는 실제로 어떤 물질에서 어떻게 형성됐는지를 설명해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "teaching",
+          "text": "〜에서 생겨나다 は「〜から生まれる」。アイデア、問題、機会など抽象的な話にも使えます。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "이제 인공지능 이야기로 가볼까요? Mistral이 뭘 발표했어요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "story_intro",
+          "text": "프랑스 기업 Mistral이 Mistral Large 4를 발표했어요. 회사는 일부 분야에서 여러 공개 가중치 경쟁 모델보다 성능이 좋다고 밝혔어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "공개 가중치라는 말은 완전한 오픈 소스와 같은 뜻이에요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "꼭 그렇지는 않아요. 모델 가중치를 제공해서 자체 인프라에서 실행할 수 있다는 뜻에 가깝고, 코드나 라이선스 조건은 별도로 봐야 해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "그러게요. 열린 모델이라는 한마디만으로는 정확한 조건을 알기 어렵겠네요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "이럴 때 더 정확히 말하면이라는 표현이 좋아요. 앞에서 한 말을 자연스럽게 고치거나 구체화할 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "이 모델은 열려 있어요. 더 정확히 말하면, 모델 가중치를 공개적으로 제공할 계획이에요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "Reuters에 따르면 Mistral은 십월 이십칠 일에 모델을 공개할 계획이에요. 그전에 사이버 보안 전문가에게 조기 접근을 제공할 예정이에요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "왜 유럽에서 특히 주목할 만해요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "Mistral이 세계 인공지능 경쟁에서 유럽의 대안이 되려고 하기 때문이에요. 성능뿐 아니라 인프라 통제와 안전도 중요한 요소예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "세 이야기에 공통점도 있네요. 이전에 보기 어렵던 것을 보고, 새로운 형성 과정을 이해하고, 새로운 도구를 직접 운영하는 이야기예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "review",
+          "text": "오늘 표현 세 개를 복습해요. 감지하다, 무엇에서 생겨나다, 더 정확히 말하면이에요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "review_slow",
+          "text": "감지하다. 무엇에서 생겨나다. 더 정확히 말하면.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "시스템이 오류를 감지했어요. 아이디어가 대화에서 생겨났어요. 저렴해요. 더 정확히 말하면 이전 버전보다 저렴해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "오늘 바로 써보고 싶은 표현은 뭐예요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "저는 더 정확히 말하면이요. 실제 대화에서는 말을 하면서 생각을 조금씩 다듬는 일이 많아서 정말 유용해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "trivia",
+          "text": "작은 대화 팁이 있어요. 맞아요, 그러게요, 그렇군요 같은 반응은 자연스럽지만 앞말에 실제로 반응할 때 가장 좋아요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "맞아요. 매번 습관처럼 넣으면 오히려 기계적으로 들릴 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "review",
+          "text": "오늘은 남극 얼음으로 중성미자를 찾는 연구, 이 세대 행성, 그리고 프랑스의 새로운 인공지능 모델을 이야기했어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "뉴스 공부와 언어 공부를 같이 하면 뭐가 좋을까요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "표현에 장면이 생겨요. 나중에 비슷한 상황을 만나면 단어 목록보다 그 장면과 함께 표현이 떠오르기 쉬워요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ja-JP",
+          "intent": "review",
+          "text": "今日は 감지하다、〜에서 생겨나다、더 정확히 말하면。해요체を崩さず、相槌は意味のある場所だけで使います。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "closing",
+          "text": "Journey Talk을 들어주셔서 고마워요. 다음 편에서 다시 만나요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "closing",
+          "text": "안녕히 계세요. 오늘 배운 표현 하나로 자기 문장을 직접 만들어 보세요.",
+          "optional": false
+        }
+      ]
+    }
+  ]
+}
