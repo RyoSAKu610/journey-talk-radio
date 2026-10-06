@@ -4,29 +4,39 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111827">
+  <meta name="description" content="最新ニュースで毎日学ぶ5言語のJourney Talk。スマホ再生・MP3ダウンロード対応。">
+  <link rel="manifest" href="manifest.webmanifest">
   <title>Journey Talk</title>
   <style>
     :root { color-scheme: light dark; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    * { box-sizing:border-box; }
     body { margin:0; background:#f4f5f7; color:#111827; }
-    main { max-width:920px; margin:auto; padding:24px 16px 56px; }
-    header { margin-bottom:24px; }
-    h1 { margin:0 0 8px; font-size:2rem; }
-    .sub { color:#596273; margin:0; }
-    .feed { display:inline-block; margin-top:12px; }
+    main { max-width:920px; margin:auto; padding:22px 14px 64px; }
+    header { margin-bottom:20px; }
+    h1 { margin:0 0 7px; font-size:2rem; }
+    .sub { color:#596273; margin:0 0 12px; line-height:1.55; }
+    .status { font-size:.85rem; color:#596273; margin:8px 0; }
+    .feeds { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 16px; }
+    .feeds a,.filter button { border:1px solid #d1d5db; background:white; color:#111827; border-radius:999px; padding:8px 11px; text-decoration:none; font:inherit; }
+    .filter { display:flex; overflow-x:auto; gap:8px; padding-bottom:6px; }
+    .filter button.active { background:#111827; color:white; border-color:#111827; }
     .day { background:white; border-radius:18px; padding:18px; margin:18px 0; box-shadow:0 4px 18px rgba(0,0,0,.06); }
-    .day h2 { margin:0 0 12px; }
+    .day h2 { margin:0 0 10px; font-size:1.15rem; }
     .episode { border-top:1px solid #e5e7eb; padding:16px 0; }
     .episode:first-of-type { border-top:0; }
-    .episode h3 { margin:0 0 8px; font-size:1.05rem; }
-    audio { width:100%; margin:6px 0 8px; }
-    a.button { display:inline-block; padding:9px 12px; border-radius:10px; text-decoration:none; background:#111827; color:white; margin-right:8px; }
-    .meta { font-size:.85rem; color:#6b7280; }
+    .episode h3 { margin:0 0 8px; font-size:1.03rem; line-height:1.45; }
+    audio { width:100%; margin:7px 0 9px; }
+    a.button { display:inline-block; padding:9px 12px; border-radius:10px; text-decoration:none; background:#111827; color:white; margin:4px 8px 4px 0; }
+    a.secondary { display:inline-block; margin:4px 8px 4px 0; }
+    .meta { font-size:.84rem; color:#6b7280; }
+    .empty { padding:30px 0; color:#6b7280; }
     @media (prefers-color-scheme: dark) {
       body { background:#0b1020; color:#f8fafc; }
       .day { background:#151b2d; box-shadow:none; }
       .episode { border-color:#2c3449; }
-      .sub,.meta { color:#aab3c3; }
-      a.button { background:#f8fafc; color:#111827; }
+      .sub,.meta,.status,.empty { color:#aab3c3; }
+      a.button,.filter button.active { background:#f8fafc; color:#111827; border-color:#f8fafc; }
+      .feeds a,.filter button { background:#151b2d; color:#f8fafc; border-color:#475569; }
     }
   </style>
 </head>
@@ -34,32 +44,58 @@
 <main>
   <header>
     <h1>Journey Talk</h1>
-    <p class="sub">最新ニュースで毎日学ぶ、5言語の10〜15分ポッドキャスト。</p>
-    <a class="feed" href="feed.xml">RSS / feed.xml</a>
+    <p class="sub">最新ニュースを題材に、男女MCの自然な会話で毎日学ぶ。各言語10〜15分、音声QA合格版だけを公開します。</p>
+    <div id="status" class="status">品質状態を確認中…</div>
+    <div class="feeds">
+      <a href="feed.xml">全言語RSS</a>
+      <a href="feed-de.xml">🇩🇪 RSS</a>
+      <a href="feed-es.xml">🇪🇸 RSS</a>
+      <a href="feed-ru.xml">🇷🇺 RSS</a>
+      <a href="feed-zh.xml">🇨🇳 RSS</a>
+      <a href="feed-ko.xml">🇰🇷 RSS</a>
+    </div>
+    <div class="filter" id="filter"></div>
   </header>
   <div id="episodes">読み込み中…</div>
 </main>
 <script>
-const labels = {de:"🇩🇪 ドイツ語", es:"🇪🇸 スペイン語", ru:"🇷🇺 ロシア語", zh:"🇨🇳 中国語", ko:"🇰🇷 韓国語"};
-const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-fetch('episodes.json', {cache:'no-store'}).then(r => r.json()).then(days => {
+const labels = {all:"すべて",de:"🇩🇪 ドイツ語",es:"🇪🇸 スペイン語",ru:"🇷🇺 ロシア語",zh:"🇨🇳 中国語",ko:"🇰🇷 韓国語"};
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let days = [], active = 'all';
+function renderFilter(){
+  document.getElementById('filter').innerHTML = Object.entries(labels).map(([slug,label]) => `<button data-slug="${slug}" class="${slug===active?'active':''}">${label}</button>`).join('');
+  document.querySelectorAll('#filter button').forEach(btn => btn.onclick = () => { active=btn.dataset.slug; renderFilter(); renderEpisodes(); });
+}
+function renderEpisodes(){
   const root = document.getElementById('episodes');
-  if (!days.length) { root.textContent = 'まだ公開済みエピソードはありません。'; return; }
-  root.innerHTML = days.map(day => `
-    <section class="day">
-      <h2>${esc(day.date)}</h2>
-      ${day.episodes.map(ep => `
-        <article class="episode">
-          <h3>${labels[ep.slug] || esc(ep.japanese_name)} — ${esc(ep.title)}</h3>
-          <div class="meta">${Math.round(ep.duration_seconds/60)}分</div>
-          <audio controls preload="none" src="${esc(ep.audio_url)}"></audio>
-          <div>
-            <a class="button" href="${esc(ep.audio_url)}" download>MP3ダウンロード</a>
-            <a href="${esc(ep.script_url)}">台本</a>
-          </div>
-        </article>`).join('')}
-    </section>`).join('');
+  const html = days.map(day => {
+    const eps = day.episodes.filter(ep => active==='all' || ep.slug===active);
+    if (!eps.length) return '';
+    return `<section class="day"><h2>${esc(day.date)}</h2>${eps.map(ep => `
+      <article class="episode">
+        <h3>${labels[ep.slug] || esc(ep.japanese_name)} — ${esc(ep.title)}</h3>
+        <div class="meta">${Math.round(ep.duration_seconds/60)}分 · QA PASS${ep.asr_average_similarity ? ` · ASR ${Math.round(ep.asr_average_similarity*100)}%` : ''}</div>
+        <audio controls preload="none" src="${esc(ep.audio_url)}"></audio>
+        <div>
+          <a class="button" href="${esc(ep.audio_url)}" download>MP3ダウンロード</a>
+          <a class="secondary" href="${esc(ep.script_url)}">台本</a>
+          ${ep.qa_url ? `<a class="secondary" href="${esc(ep.qa_url)}">QA</a>` : ''}
+        </div>
+      </article>`).join('')}</section>`;
+  }).join('');
+  root.innerHTML = html || '<div class="empty">この言語の公開済みエピソードはまだありません。</div>';
+}
+Promise.all([
+  fetch('episodes.json',{cache:'no-store'}).then(r => r.ok ? r.json() : []),
+  fetch('health.json',{cache:'no-store'}).then(r => r.ok ? r.json() : null).catch(() => null)
+]).then(([episodeDays,health]) => {
+  days = Array.isArray(episodeDays) ? episodeDays : [];
+  const status = document.getElementById('status');
+  if (health?.status === 'PASS') status.textContent = `最新公開: ${health.last_published_date} · Voice Director v${health.voice_profile_version} · QA PASS`;
+  else status.textContent = '公開済み音声のみ表示しています。';
+  renderFilter(); renderEpisodes();
 }).catch(err => { document.getElementById('episodes').textContent = '読み込みに失敗しました: ' + err; });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 </script>
 </body>
 </html>
