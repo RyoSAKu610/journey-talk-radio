@@ -32,7 +32,6 @@ concurrency:
 
 permissions:
   contents: write
-  issues: write
   pages: write
   id-token: write
 
@@ -92,7 +91,7 @@ jobs:
         run: |
           DATE="${{ steps.day.outputs.date }}"
           test -f "incoming/${DATE}.json" || {
-            echo "Missing incoming/${DATE}.json. No incomplete audio will be published." >&2
+            echo "Missing incoming/${DATE}.json. Production waits for the repair/generation loop; nothing is published." >&2
             exit 3
           }
           python -m py_compile \
@@ -124,20 +123,57 @@ jobs:
       - name: Check configured voices against Edge TTS
         run: python scripts/voice_healthcheck.py
 
-      - name: Render five MP3 editions
+      - name: Render and QA with self-healing retries
+        shell: bash
         run: |
+          set +e
           DATE="${{ steps.day.outputs.date }}"
-          python scripts/render_language_episodes.py \
-            --episode-dir "output/languages/$DATE" \
-            --output-dir "build/languages/$DATE"
+          PASSED=0
+          for ROUND in 1 2 3; do
+            echo "## Audio quality round ${ROUND}" >> "$GITHUB_STEP_SUMMARY"
+            rm -rf "build/languages/$DATE" "build/qa/$DATE"
+            mkdir -p "build/languages/$DATE" "build/qa/$DATE"
 
-      - name: Acoustic and sampled Whisper QA
-        run: |
-          DATE="${{ steps.day.outputs.date }}"
-          python scripts/qa_language_episodes.py \
-            --episode-dir "output/languages/$DATE" \
-            --media-dir "build/languages/$DATE" \
-            --output-dir "build/qa/$DATE"
+            python scripts/render_language_episodes.py \
+              --episode-dir "output/languages/$DATE" \
+              --output-dir "build/languages/$DATE"
+            RENDER_RC=$?
+            if [[ $RENDER_RC -ne 0 ]]; then
+              echo "- render failed (rc=${RENDER_RC}); regenerating from the same verified script" >> "$GITHUB_STEP_SUMMARY"
+              sleep $((ROUND * 3))
+              continue
+            fi
+
+            python scripts/qa_language_episodes.py \
+              --episode-dir "output/languages/$DATE" \
+              --media-dir "build/languages/$DATE" \
+              --output-dir "build/qa/$DATE"
+            QA_RC=$?
+            if [[ $QA_RC -eq 0 ]]; then
+              PASSED=1
+              echo "- PASS" >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+
+            echo "- QA failed (rc=${QA_RC}); report retained and audio will be regenerated" >> "$GITHUB_STEP_SUMMARY"
+            if [[ -f "build/qa/$DATE/qa-report.json" ]]; then
+              python - <<PY
+          import json
+          from pathlib import Path
+          p = Path('build/qa/$DATE/qa-report.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          cats = [f"{x.get('slug')}:{x.get('category')}" for x in data.get('issues', [])]
+          print('repair targets:', ', '.join(cats[:30]))
+          PY
+            fi
+            sleep $((ROUND * 3))
+          done
+          set -e
+
+          if [[ $PASSED -ne 1 ]]; then
+            echo "Audio did not reach the publish gate in this runner. Diagnostics are kept for the cross-run repair loop; no MP3 is published." >&2
+            exit 20
+          fi
 
       - name: Publish QA-passed date archive
         env:
@@ -180,32 +216,54 @@ jobs:
           echo "- Duration gate: 10–15 minutes, no time stretching" >> "$GITHUB_STEP_SUMMARY"
           echo "- Voice Director: v2 language-specific profiles" >> "$GITHUB_STEP_SUMMARY"
           echo "- Audio QA: decode, silence, volume/peak, speech-plan integrity, sampled Whisper" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Local transient repair: up to 3 full render/QA rounds" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cross-run repair: Journey Talk Build & Repair continues hourly until PASS" >> "$GITHUB_STEP_SUMMARY"
           echo "- Release tag: multilang-$DATE" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload diagnostics on failure
+      - name: Persist machine-readable repair state on failure
         if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: journey-talk-failure-${{ steps.day.outputs.date }}-${{ github.run_id }}
-          retention-days: 3
-          if-no-files-found: ignore
-          path: |
-            output/languages/${{ steps.day.outputs.date }}/
-            build/languages/${{ steps.day.outputs.date }}/media-manifest.json
-            build/qa/${{ steps.day.outputs.date }}/
-
-      - name: Open one failure issue for the day
-        if: failure() && github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           DATE="${{ steps.day.outputs.date }}"
-          TITLE="Journey Talk production failure — ${DATE}"
-          EXISTING="$(gh issue list --state open --search "${TITLE} in:title" --json number --jq '.[0].number // empty')"
-          if [[ -z "$EXISTING" ]]; then
-            gh issue create --title "$TITLE" --body "The scheduled production run failed. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. No unverified MP3s were published."
-          fi
+          mkdir -p "build/repair/$DATE"
+          python - <<PY
+          import json, os
+          from pathlib import Path
+          date = "$DATE"
+          qa_path = Path(f"build/qa/{date}/qa-report.json")
+          qa = None
+          if qa_path.is_file():
+              try:
+                  qa = json.loads(qa_path.read_text(encoding='utf-8'))
+              except Exception:
+                  qa = None
+          state = {
+              "date": date,
+              "status": "NEEDS_REPAIR",
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+              "commit": os.environ.get("GITHUB_SHA"),
+              "qa": qa,
+              "policy": "Do not publish or notify failure-only; preserve evidence and continue repair on the next loop.",
+          }
+          Path(f"build/repair/{date}/repair-state.json").write_text(
+              json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding='utf-8'
+          )
+          PY
+
+      - name: Upload repair diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: journey-talk-repair-${{ steps.day.outputs.date }}-${{ github.run_id }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            incoming/${{ steps.day.outputs.date }}.json
+            output/languages/${{ steps.day.outputs.date }}/
+            build/languages/${{ steps.day.outputs.date }}/media-manifest.json
+            build/qa/${{ steps.day.outputs.date }}/
+            build/repair/${{ steps.day.outputs.date }}/
 
   deploy-pages:
     needs: build-publish
