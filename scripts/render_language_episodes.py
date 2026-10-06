@@ -14,7 +14,7 @@ import yaml
 from pydub import AudioSegment
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from tts_engines import GeminiEpisodeTTS, GoogleCloudTTS, OpenAITTS, TTSError, estimate_word_timings, slow_down, tempo_from_rate  # noqa: E402
+from tts_engines import CosyVoiceModalTTS, GeminiEpisodeTTS, GoogleCloudTTS, OpenAITTS, TTSError, estimate_word_timings, slow_down, tempo_from_rate  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
@@ -99,7 +99,7 @@ def open_engines(cfg: dict) -> list:
     """Cloud engines in priority order, skipping those without credentials."""
     engines = []
     for name in tts_order(cfg):
-        factory = {"gemini": GeminiEpisodeTTS, "google_cloud": GoogleCloudTTS, "openai": OpenAITTS}.get(name)
+        factory = {"gemini": GeminiEpisodeTTS, "cosyvoice": CosyVoiceModalTTS, "google_cloud": GoogleCloudTTS, "openai": OpenAITTS}.get(name)
         if factory is None:
             continue
         try:

@@ -55,7 +55,7 @@ hosts:
 tts:
   # Engines tried in order for each episode; one episode never mixes engines. Edge TTS needs no key and
   # is always the last resort. Override with the TTS_ORDER repository variable, e.g. "openai,edge".
-  order: [gemini, google_cloud, openai, edge]
+  order: [gemini, cosyvoice, google_cloud, openai, edge]
   # Gemini and OpenAI voices speak quickly; target-language lines are slowed to this tempo for learners
   # (pitch preserved). Japanese navigation keeps its natural pace. Edge already uses a learner pace.
   target_language_tempo: 0.85
@@ -72,6 +72,14 @@ tts:
     # Appended to every line so the hand-over pauses stand out when the take is split into lines.
     line_break_tag: "[long pause]"
     max_attempts: 4
+  cosyvoice:
+    # CosyVoice 3 on Modal (scripts/modal_cosyvoice.py). Needs the MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets;
+    # Modal's free $30/month credit covers roughly a month of daily episodes, and calls simply fail (falling
+    # through to the next engine) once it is used up. Voices are cloned from these Gemini-voiced clips.
+    app_name: "journey-talk-cosyvoice"
+    voices:
+      MC_F: {reference: "assets/voices/mina", language: "ja-JP"}
+      MC_M: {reference: "assets/voices/ren", language: "ja-JP"}
   google_cloud:
     # Cloud Text-to-Speech, Chirp 3: HD (same voice family as Gemini). Free tier: 1M characters/month.
     # Needs the Cloud Text-to-Speech API enabled on the key's project; GOOGLE_TTS_API_KEY, else GEMINI_API_KEY.

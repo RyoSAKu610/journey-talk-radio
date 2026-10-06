@@ -707,6 +707,44 @@ class SpeechEngineTests(unittest.TestCase):
                 engine.render(self.utterances)
         self.assertEqual(len(calls), 1)
 
+    def test_cosyvoice_sends_one_call_per_episode_with_cloned_host_voices(self):
+        calls = []
+        wav = self.wav_body(900)["audioContent"]
+
+        class Remote:
+            def remote(_self, lines, voices):
+                calls.append((lines, voices))
+                return [base64.b64decode(wav) for _ in lines]
+
+        class Instance:
+            synthesize = Remote()
+
+        engine = self.tts.CosyVoiceModalTTS(BASE_CFG, client=lambda: Instance())
+        clips = engine.render(self.utterances)
+        self.assertEqual(len(calls), 1)
+        lines, voices = calls[0]
+        self.assertEqual([l["language"] for l in lines], [u["language"] for u in self.utterances])
+        self.assertEqual(set(voices), {"MC_F", "MC_M"})
+        self.assertTrue(voices["MC_F"]["wav"].startswith(b"RIFF"))
+        self.assertTrue(voices["MC_F"]["text"].startswith("みなさん"))
+        self.assertTrue(voices["MC_M"]["text"].startswith("こんにちは、レンです"))
+        self.assertEqual(voices["MC_M"]["language"], "ja-JP")
+        self.assertTrue(all(800 <= len(c) <= 1000 for c in clips))
+
+    def test_cosyvoice_failure_becomes_a_tts_error(self):
+        class Instance:
+            class synthesize:
+                @staticmethod
+                def remote(lines, voices):
+                    raise RuntimeError("Workspace is out of credits")
+
+        engine = self.tts.CosyVoiceModalTTS(BASE_CFG, client=lambda: Instance())
+        with self.assertRaisesRegex(self.tts.TTSError, "out of credits"):
+            engine.render(self.utterances)
+        with mock.patch.dict("os.environ", {"MODAL_TOKEN_ID": "", "MODAL_TOKEN_SECRET": ""}):
+            with self.assertRaisesRegex(self.tts.TTSError, "MODAL_TOKEN"):
+                self.tts.CosyVoiceModalTTS(BASE_CFG)
+
     def test_slow_rate_and_time_stretch(self):
         self.assertEqual(self.tts.tempo_from_rate("-25%"), 0.75)
         self.assertEqual(self.tts.tempo_from_rate("+0%"), 1.0)
@@ -725,7 +763,7 @@ class SpeechEngineTests(unittest.TestCase):
             render = load_script("render_language_episodes")
         except ImportError as exc:
             self.skipTest(f"audio dependencies unavailable: {exc}")
-        self.assertEqual(render.tts_order(BASE_CFG), ["gemini", "google_cloud", "openai", "edge"])
+        self.assertEqual(render.tts_order(BASE_CFG), ["gemini", "cosyvoice", "google_cloud", "openai", "edge"])
         with mock.patch.dict("os.environ", {"TTS_ORDER": "openai"}):
             self.assertEqual(render.tts_order(BASE_CFG), ["openai", "edge"])
 
@@ -744,7 +782,7 @@ class SpeechEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, mock.patch.object(render, "synthesize", fake_edge):
             paths, _, engine = render.render_audio(BASE_CFG, self.utterances[:1], Path(temporary), [gemini, openai])
         self.assertEqual((paths, engine, gemini.calls, openai.calls), (["edge.mp3"], "edge", 1, 1))
-        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "", "GOOGLE_TTS_API_KEY": "", "OPENAI_API_KEY": ""}):
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "", "GOOGLE_TTS_API_KEY": "", "OPENAI_API_KEY": "", "MODAL_TOKEN_ID": "", "MODAL_TOKEN_SECRET": ""}):
             self.assertEqual(render.open_engines(BASE_CFG), [])
 
 

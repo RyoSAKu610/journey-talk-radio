@@ -7,3 +7,4 @@ google-auth==2.40.3
 Pillow==11.3.0
 pydub==0.25.1
 faster-whisper==1.2.0
+modal==1.6.1

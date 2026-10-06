@@ -5,10 +5,12 @@
    "[long pause]" tag, which makes the hand-over between lines the longest pauses in the take;
    align_lines() then picks one pause per boundary. Verified on a 24-line take: every clip matched
    its line.
-2. Google Cloud TTS, Chirp 3: HD voices: one request per line (exact timing) inside the 1M
+2. CosyVoice 3 (open model by Alibaba) on Modal's free monthly GPU credit, with each host's voice cloned
+   from a short Gemini-voiced reference clip; one remote call per episode, exact line timing.
+3. Google Cloud TTS, Chirp 3: HD voices: one request per line (exact timing) inside the 1M
    characters a month free tier, guarded by a monthly budget kept in the repository.
-3. OpenAI GPT TTS (paid): one request per line, only when OPENAI_API_KEY is set.
-4. Edge TTS lives in render_language_episodes.py and is the last resort.
+4. OpenAI GPT TTS (paid): one request per line, only when OPENAI_API_KEY is set.
+5. Edge TTS lives in render_language_episodes.py and is the last resort.
 
 Gemini and OpenAI return no word timings, so karaoke timings are estimated inside each line.
 Shadowing ("slow") lines are time-stretched after synthesis so every engine slows them the same way.
@@ -241,6 +243,55 @@ class OpenAITTS:
                 raise TTSError("OpenAI TTS returned no audio")
             return AudioSegment(data=response.content, sample_width=2, frame_rate=24000, channels=1)
         raise TTSError("OpenAI TTS: retries exhausted")
+
+
+# --------------------------------------------------------------------------- CosyVoice on Modal
+
+
+class CosyVoiceModalTTS:
+    """CosyVoice 3 running on Modal (scripts/modal_cosyvoice.py), one remote call per episode.
+
+    Each host's voice is cloned from assets/voices/<name>.wav (+ .txt transcript), recorded with the same
+    Gemini voices, so the hosts sound the same whichever engine rendered the episode. Needs MODAL_TOKEN_ID and
+    MODAL_TOKEN_SECRET; when Modal's free monthly credit is used up the call fails and the next engine runs.
+    """
+
+    name = "cosyvoice"
+
+    def __init__(self, cfg: dict, client=None):
+        settings = cfg["tts"]["cosyvoice"]
+        if client is None:
+            if not (os.getenv("MODAL_TOKEN_ID", "").strip() and os.getenv("MODAL_TOKEN_SECRET", "").strip()):
+                raise TTSError("MODAL_TOKEN_ID / MODAL_TOKEN_SECRET are not configured")
+            try:
+                import modal
+            except ImportError as exc:
+                raise TTSError("the modal package is not installed") from exc
+            client = modal.Cls.from_name(settings["app_name"], "CosyVoice")
+        self.client = client
+        root = Path(__file__).resolve().parents[1]
+        self.voices = {}
+        for speaker, voice in settings["voices"].items():
+            base = root / voice["reference"]
+            try:
+                self.voices[speaker] = {
+                    "wav": base.with_suffix(".wav").read_bytes(),
+                    "text": base.with_suffix(".txt").read_text(encoding="utf-8").strip(),
+                    "language": voice["language"],
+                }
+            except OSError as exc:
+                raise TTSError(f"voice reference missing: {exc}") from exc
+        self.model_in_use = "cosyvoice3"
+
+    def render(self, utterances: list[dict]) -> list[AudioSegment]:
+        lines = [{"speaker": u["speaker"], "language": u["language"], "text": u["text"]} for u in utterances]
+        try:
+            wavs = self.client().synthesize.remote(lines, self.voices)
+        except Exception as exc:  # Modal raises its own types: auth, credit exhausted, deploy missing, CUDA errors
+            raise TTSError(f"CosyVoice on Modal failed: {type(exc).__name__}: {str(exc)[:300]}") from exc
+        if len(wavs) != len(lines):
+            raise TTSError(f"CosyVoice returned {len(wavs)} clips for {len(lines)} lines")
+        return [trim_silence(AudioSegment.from_file(io.BytesIO(w), format="wav")) for w in wavs]
 
 
 # --------------------------------------------------------------------------- Google Cloud
