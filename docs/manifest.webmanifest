@@ -1,0 +1,10 @@
+{
+  "name": "Journey Talk",
+  "short_name": "Journey Talk",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "lang": "ja",
+  "description": "最新ニュースで毎日学ぶ5言語の語学ラジオ"
+}
