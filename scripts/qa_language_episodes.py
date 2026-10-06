@@ -130,12 +130,16 @@ def choose_asr_samples(plan: list[dict[str, Any]], target_language: str, total: 
     target_candidates = [
         item
         for item in plan
-        if item["language"] == target_language and float(item["segment_seconds"]) >= 1.6 and item["intent"] not in {"reaction"}
+        if item["language"] == target_language
+        and float(item["segment_seconds"]) >= 1.6
+        and item["intent"] not in {"reaction"}
     ]
     ja_candidates = [
         item
         for item in plan
-        if item["language"] == "ja-JP" and float(item["segment_seconds"]) >= 1.6 and item["intent"] not in {"reaction"}
+        if item["language"] == "ja-JP"
+        and float(item["segment_seconds"]) >= 1.6
+        and item["intent"] not in {"reaction"}
     ]
     target_count = max(3, total - 2)
     samples = _even_pick(target_candidates, target_count) + _even_pick(ja_candidates, 2)
@@ -186,6 +190,16 @@ def validate_speech_plan(
         previous = utterance
 
 
+def issue(category: str, message: str, *, severity: str = "error", **details: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "category": category,
+        "severity": severity,
+        "message": message,
+    }
+    payload.update(details)
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episode-dir", type=Path, required=True)
@@ -209,97 +223,219 @@ def main() -> int:
         "voice_profile_version": director.version,
         "whisper_model": model_name,
         "status": "PASS",
+        "issues": [],
         "episodes": [],
     }
 
     for item in manifest["episodes"]:
         slug = item["slug"]
+        episode_issues: list[dict[str, Any]] = []
+        metrics: dict[str, Any] = {}
+        sample_results: list[dict[str, Any]] = []
+        media_item = by_slug.get(slug)
         episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
-        media_item = by_slug[slug]
+
+        if not media_item:
+            episode_issues.append(issue("missing_media_manifest", f"{slug}: media manifest entry is missing"))
+            episode_report = {"slug": slug, "status": "FAIL", "issues": episode_issues}
+            report["episodes"].append(episode_report)
+            report["issues"].extend({"slug": slug, **entry} for entry in episode_issues)
+            continue
+
         audio_path = args.media_dir / media_item["audio"]
         if not audio_path.is_file():
-            raise FileNotFoundError(audio_path)
+            episode_issues.append(issue("missing_audio", f"{slug}: rendered MP3 is missing", audio=str(audio_path)))
+        else:
+            try:
+                decode_entire_file(audio_path)
+            except Exception as exc:
+                episode_issues.append(issue("decode", f"{slug}: full-file decode failed", error=str(exc)))
 
-        decode_entire_file(audio_path)
-        technical = probe_audio(audio_path)
-        duration = float(technical["format"]["duration"])
-        if not float(program["target_min_seconds"]) <= duration <= float(program["target_max_seconds"]):
-            raise RuntimeError(f"{slug}: duration {duration:.2f}s outside production window")
+            try:
+                technical = probe_audio(audio_path)
+                duration = float(technical["format"]["duration"])
+                metrics["duration_seconds"] = round(duration, 3)
+                if not float(program["target_min_seconds"]) <= duration <= float(program["target_max_seconds"]):
+                    episode_issues.append(
+                        issue(
+                            "duration",
+                            f"{slug}: duration {duration:.2f}s outside production window",
+                            observed=duration,
+                            minimum=float(program["target_min_seconds"]),
+                            maximum=float(program["target_max_seconds"]),
+                            suggested_action="repair script length; do not time-stretch final audio",
+                        )
+                    )
+            except Exception as exc:
+                episode_issues.append(issue("probe", f"{slug}: ffprobe failed", error=str(exc)))
 
-        long_silences = detect_long_silence(audio_path, float(qa["max_silence_seconds"]))
-        if long_silences:
-            raise RuntimeError(f"{slug}: detected long silence(s): {long_silences[:5]}")
+            try:
+                long_silences = detect_long_silence(audio_path, float(qa["max_silence_seconds"]))
+                metrics["long_silences"] = long_silences
+                if long_silences:
+                    episode_issues.append(
+                        issue(
+                            "silence",
+                            f"{slug}: detected unnatural long silence(s)",
+                            observed=long_silences[:10],
+                            threshold=float(qa["max_silence_seconds"]),
+                            suggested_action="rerender affected episode and inspect pause/segment boundaries",
+                        )
+                    )
+            except Exception as exc:
+                episode_issues.append(issue("silence_scan", f"{slug}: silence scan failed", error=str(exc)))
 
-        mean_db, peak_db = volume_stats(audio_path)
-        if not float(qa["min_mean_volume_db"]) <= mean_db <= float(qa["max_mean_volume_db"]):
-            raise RuntimeError(f"{slug}: mean volume {mean_db:.2f}dB outside configured range")
-        if peak_db > float(qa["max_peak_volume_db"]):
-            raise RuntimeError(f"{slug}: peak volume {peak_db:.2f}dB is too close to clipping")
+            try:
+                mean_db, peak_db = volume_stats(audio_path)
+                metrics["mean_volume_db"] = mean_db
+                metrics["peak_volume_db"] = peak_db
+                if not float(qa["min_mean_volume_db"]) <= mean_db <= float(qa["max_mean_volume_db"]):
+                    episode_issues.append(
+                        issue(
+                            "mean_volume",
+                            f"{slug}: mean volume is outside configured range",
+                            observed=mean_db,
+                            minimum=float(qa["min_mean_volume_db"]),
+                            maximum=float(qa["max_mean_volume_db"]),
+                            suggested_action="rerun normalization or repair source segment levels",
+                        )
+                    )
+                if peak_db > float(qa["max_peak_volume_db"]):
+                    episode_issues.append(
+                        issue(
+                            "peak_volume",
+                            f"{slug}: peak level is too close to clipping",
+                            observed=peak_db,
+                            maximum=float(qa["max_peak_volume_db"]),
+                            suggested_action="rerun normalization with safer headroom",
+                        )
+                    )
+            except Exception as exc:
+                episode_issues.append(issue("volume_scan", f"{slug}: volume scan failed", error=str(exc)))
 
-        plan = media_item.get("speech_plan") or []
-        validate_speech_plan(director, episode, plan)
-        samples = choose_asr_samples(plan, episode["language"], int(qa["asr_samples_per_episode"]))
-        if len(samples) < 4:
-            raise RuntimeError(f"{slug}: not enough suitable utterances for ASR sampling")
-
-        full_audio = AudioSegment.from_file(audio_path, format="mp3")
-        sample_results: list[dict[str, Any]] = []
-        with tempfile.TemporaryDirectory(prefix=f"journey-talk-{slug}-qa-") as temp:
-            temp_dir = Path(temp)
-            for sample in samples:
-                index = int(sample["index"])
-                start = max(0, int(sample["start_ms"]) - 80)
-                end = min(len(full_audio), int(sample["end_ms"]) + 80)
-                heard = transcribe_clip(whisper, full_audio[start:end], sample["language"], temp_dir, index)
-                expected_text = normalize_spoken_text(episode["utterances"][index]["text"])
-                score = similarity(expected_text, heard)
-                sample_results.append(
-                    {
-                        "index": index,
-                        "language": sample["language"],
-                        "intent": sample["intent"],
-                        "similarity": round(score, 4),
-                        "heard": heard[:300],
-                    }
+            plan = media_item.get("speech_plan") or []
+            try:
+                validate_speech_plan(director, episode, plan)
+            except Exception as exc:
+                episode_issues.append(
+                    issue(
+                        "speech_plan",
+                        str(exc),
+                        suggested_action="rebuild render plan from current Voice Director profile before publishing",
+                    )
                 )
 
-        scores = [float(sample["similarity"]) for sample in sample_results]
-        average = sum(scores) / len(scores)
-        minimum = min(scores)
-        if average < float(qa["asr_min_average_similarity"]):
-            raise RuntimeError(f"{slug}: sampled ASR average similarity {average:.3f} is too low")
-        if minimum < float(qa["asr_min_single_similarity"]):
-            worst = min(sample_results, key=lambda sample: sample["similarity"])
-            raise RuntimeError(
-                f"{slug}: sampled ASR similarity {minimum:.3f} is too low at utterance {worst['index']}"
-            )
+            if not any(entry["category"] in {"missing_audio", "decode", "speech_plan"} for entry in episode_issues):
+                try:
+                    samples = choose_asr_samples(plan, episode["language"], int(qa["asr_samples_per_episode"]))
+                    if len(samples) < 4:
+                        episode_issues.append(
+                            issue(
+                                "asr_sampling",
+                                f"{slug}: not enough suitable utterances for ASR sampling",
+                                observed=len(samples),
+                                minimum=4,
+                                suggested_action="repair turn structure or speech plan so enough representative samples exist",
+                            )
+                        )
+                    else:
+                        full_audio = AudioSegment.from_file(audio_path, format="mp3")
+                        with tempfile.TemporaryDirectory(prefix=f"journey-talk-{slug}-qa-") as temp:
+                            temp_dir = Path(temp)
+                            for sample in samples:
+                                index = int(sample["index"])
+                                start = max(0, int(sample["start_ms"]) - 80)
+                                end = min(len(full_audio), int(sample["end_ms"]) + 80)
+                                heard = transcribe_clip(
+                                    whisper,
+                                    full_audio[start:end],
+                                    sample["language"],
+                                    temp_dir,
+                                    index,
+                                )
+                                expected_text = normalize_spoken_text(episode["utterances"][index]["text"])
+                                score = similarity(expected_text, heard)
+                                sample_results.append(
+                                    {
+                                        "index": index,
+                                        "language": sample["language"],
+                                        "intent": sample["intent"],
+                                        "similarity": round(score, 4),
+                                        "heard": heard[:300],
+                                    }
+                                )
+                        scores = [float(sample["similarity"]) for sample in sample_results]
+                        average = sum(scores) / len(scores)
+                        minimum = min(scores)
+                        metrics["asr_average_similarity"] = round(average, 4)
+                        metrics["asr_min_similarity"] = round(minimum, 4)
+                        metrics["asr_samples"] = sample_results
+                        if average < float(qa["asr_min_average_similarity"]):
+                            episode_issues.append(
+                                issue(
+                                    "asr_average",
+                                    f"{slug}: sampled ASR average similarity is too low",
+                                    observed=round(average, 4),
+                                    minimum=float(qa["asr_min_average_similarity"]),
+                                    suggested_action="inspect low-scoring utterances, pronunciation normalization, and rerender only affected speech when possible",
+                                )
+                            )
+                        single_limit = float(qa["asr_min_single_similarity"])
+                        for sample in sample_results:
+                            if float(sample["similarity"]) < single_limit:
+                                episode_issues.append(
+                                    issue(
+                                        "asr_segment",
+                                        f"{slug}: low ASR similarity at utterance {sample['index']}",
+                                        utterance_index=int(sample["index"]),
+                                        language=sample["language"],
+                                        intent=sample["intent"],
+                                        observed=float(sample["similarity"]),
+                                        minimum=single_limit,
+                                        heard=sample["heard"],
+                                        expected=episode["utterances"][int(sample["index"])]["text"][:300],
+                                        suggested_action="repair pronunciation text or rerender this utterance with conservative prosody; keep the rest of the episode",
+                                    )
+                                )
+                except Exception as exc:
+                    episode_issues.append(issue("asr_runtime", f"{slug}: ASR QA failed to run", error=str(exc)))
 
+        episode_status = "PASS" if not episode_issues else "FAIL"
         episode_report = {
             "slug": slug,
-            "audio": media_item["audio"],
-            "duration_seconds": round(duration, 3),
-            "mean_volume_db": mean_db,
-            "peak_volume_db": peak_db,
-            "long_silences": long_silences,
-            "asr_average_similarity": round(average, 4),
-            "asr_min_similarity": round(minimum, 4),
-            "asr_samples": sample_results,
-            "status": "PASS",
+            "audio": media_item.get("audio") if media_item else None,
+            "status": episode_status,
+            "metrics": metrics,
+            "issues": episode_issues,
         }
         report["episodes"].append(episode_report)
+        report["issues"].extend({"slug": slug, **entry} for entry in episode_issues)
         (args.output_dir / f"{slug}-qa.json").write_text(
             json.dumps(episode_report, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        print(
-            f"[qa] {slug}: PASS duration={duration:.1f}s mean={mean_db:.1f}dB "
-            f"peak={peak_db:.1f}dB asr_avg={average:.3f}"
-        )
+        if episode_status == "PASS":
+            print(
+                f"[qa] {slug}: PASS duration={metrics.get('duration_seconds', 0):.1f}s "
+                f"mean={metrics.get('mean_volume_db', 0):.1f}dB "
+                f"peak={metrics.get('peak_volume_db', 0):.1f}dB "
+                f"asr_avg={metrics.get('asr_average_similarity', 0):.3f}"
+            )
+        else:
+            categories = ", ".join(entry["category"] for entry in episode_issues)
+            print(f"[qa] {slug}: FAIL {categories}")
 
+    if report["issues"]:
+        report["status"] = "FAIL"
     (args.output_dir / "qa-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+    if report["status"] != "PASS":
+        print(f"[qa] overall FAIL with {len(report['issues'])} actionable issue(s)")
+        return 2
+    print("[qa] overall PASS")
     return 0
 
 
