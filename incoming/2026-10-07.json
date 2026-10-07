@@ -293,6 +293,132 @@
         {
           "speaker": "MC_F",
           "language": "de-DE",
+          "intent": "teaching",
+          "text": "Noch ein Punkt: Auf den ersten Blick klingt eine Schlagzeile oft eindeutiger als die Forschung dahinter.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Darum lohnt es sich, zwischen Beobachtung, Erklärung und Metapher zu unterscheiden.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Wie würdest du das im Alltag ausdrücken?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Ich würde sagen: Erst prüfen, dann genauer formulieren.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Das passt auch zu KI-Nachrichten, weil offen nicht immer dasselbe bedeutet.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Genau, und bei Wissenschaft gilt das ebenso für starke Bilder wie Geisterteilchen oder Phönixplanet.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Eine zweite nützliche Struktur ist einerseits und andererseits.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Einerseits macht eine Metapher ein Thema verständlich, andererseits darf sie die Fakten nicht ersetzen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Das klingt ausgewogen und nicht unnötig kompliziert.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Und es hilft, wenn du in einem Gespräch zwei Seiten zeigen willst.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Kannst du ein Alltagsbeispiel geben?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Einerseits ist die neue Wohnung zentral, andererseits ist sie teurer.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Sehr praktisch. So kann man auch Nachrichten zusammenfassen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Ja, und danach kann man mit genauer gesagt noch präzisieren.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Dann haben wir heute nicht nur Fachwörter, sondern auch Gesprächsstruktur gelernt.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Das ist das Ziel: Informationen verstehen und gleichzeitig natürlich darüber sprechen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "reaction",
+          "text": "Eine kleine Übung: Formuliere heute eine eigene Aussage mit auf den ersten Blick.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Und ergänze danach eine zweite Seite mit andererseits.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
           "intent": "review",
           "text": "Wiederholen wir drei Ausdrücke: etwas nachweisen, etwas entsteht und genauer gesagt.",
           "optional": false
@@ -662,6 +788,132 @@
           "language": "es-ES",
           "intent": "reaction",
           "text": "Qué curioso: las tres noticias hablan de ampliar capacidades, ya sea observar el universo, entender cómo nace un planeta o ejecutar una IA.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Antes del repaso, hay una idea útil: a primera vista una noticia puede parecer más simple de lo que es.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Por eso conviene separar lo observado, la explicación y la metáfora.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "¿Cómo lo dirías en una conversación normal?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Yo diría: primero lo compruebo y luego lo explico con más precisión.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Eso sirve mucho con noticias de inteligencia artificial, porque abierto puede significar cosas distintas.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Y también con ciencia, donde un nombre llamativo no sustituye los datos.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Otra estructura útil es por un lado y por otro.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Por un lado, una metáfora ayuda a entender; por otro, no debe reemplazar la explicación científica.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Suena equilibrado y muy natural.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Además sirve cuando quieres mostrar dos aspectos sin discutir.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "¿Tienes un ejemplo cotidiano?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Por un lado, el piso está muy bien situado; por otro, es más caro.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Perfecto. Esa estructura también funciona para resumir noticias.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Sí, y después puedes añadir dicho con más precisión para matizar.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Entonces hoy no solo aprendimos vocabulario técnico, sino una forma de organizar ideas.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Exacto. La meta es entender la información y poder hablar de ella con naturalidad.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "reaction",
+          "text": "Mini reto: hoy crea una frase propia con a primera vista.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Y añade una segunda perspectiva con por otro lado.",
           "optional": false
         },
         {
@@ -1039,6 +1291,132 @@
           "optional": false
         },
         {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Перед повторением полезно заметить: на первый взгляд новость часто кажется проще, чем она есть.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Поэтому важно разделять наблюдение, объяснение и красивую метафору.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Как сказать это в обычном разговоре?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Я бы сказал: сначала проверим, а потом сформулируем точнее.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Это особенно полезно в новостях об искусственном интеллекте, где слово открытый может иметь разные значения.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "И в науке тоже: яркое название не заменяет данные.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Ещё одна удобная конструкция — с одной стороны и с другой стороны.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "С одной стороны, метафора помогает понять тему, с другой стороны, она не должна заменять научное объяснение.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Звучит спокойно и естественно.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "И помогает показать две стороны вопроса без лишнего спора.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Можешь привести бытовой пример?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "С одной стороны, квартира находится в центре, с другой стороны, она дороже.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Отлично. Так же можно коротко пересказывать новости.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Да, а потом можно добавить точнее говоря и уточнить мысль.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Получается, сегодня мы учим не только термины, но и структуру разговора.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Именно. Важно понять информацию и уметь естественно её обсудить.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "reaction",
+          "text": "Небольшая практика: придумай сегодня свою фразу со словами на первый взгляд.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "А затем добавь вторую сторону с помощью конструкции с другой стороны.",
+          "optional": false
+        },
+        {
           "speaker": "MC_M",
           "language": "ru-RU",
           "intent": "review",
@@ -1413,6 +1791,132 @@
           "optional": false
         },
         {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "复习之前还有一个重点：乍一看，一条新闻常常比实际情况简单。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "所以最好把观察到的事实、解释和比喻分开。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "日常聊天里可以怎么说？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "可以说：先确认一下，再说得更准确。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "谈人工智能时特别有用，因为开放这个词可能有不同的意思。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "科学新闻也一样，有趣的名字不能代替数据。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "还有一个实用结构：一方面，另一方面。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "一方面，比喻让内容更容易理解；另一方面，比喻不能代替科学解释。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "这样听起来很平衡，也很自然。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "而且讨论一个问题的两个角度时很好用。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "能不能举一个日常例子？",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "可以说：一方面，这套房子位置很好；另一方面，价格比较高。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "很实用。总结新闻的时候也可以这样说。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "对，然后还可以用更准确地说来补充细节。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "所以今天不只是学专业词，也是在学怎么组织对话。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "没错。目标是听懂信息，也能自然地谈论它。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "reaction",
+          "text": "做个小练习：今天自己造一个带乍一看的句子。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "然后再用另一方面补充第二个角度。",
+          "optional": false
+        },
+        {
           "speaker": "MC_M",
           "language": "zh-CN",
           "intent": "review",
@@ -1784,6 +2288,132 @@
           "language": "ko-KR",
           "intent": "reaction",
           "text": "세 이야기에 공통점도 있네요. 이전에 보기 어렵던 것을 보고, 새로운 형성 과정을 이해하고, 새로운 도구를 직접 운영하는 이야기예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "복습하기 전에 한 가지 더 볼게요. 첫눈에는 뉴스가 실제보다 단순해 보일 때가 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "그래서 관찰된 사실과 설명, 비유를 구분하는 게 좋아요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "일상 대화에서는 어떻게 말하면 자연스러워요?",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "먼저 확인하고, 그다음에 더 정확하게 말해요라고 할 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "인공지능 뉴스에서는 특히 유용해요. 개방이라는 말도 여러 의미로 쓰이니까요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "과학 뉴스도 같아요. 재미있는 이름이 데이터 자체를 대신할 수는 없어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "또 한편으로는이라는 표현도 유용해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "한편으로는 비유가 이해를 돕지만, 다른 한편으로는 과학적 설명을 대신하면 안 돼요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "균형 있게 들리고 자연스럽네요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "네, 한 주제의 두 면을 보여 줄 때 좋아요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "일상적인 예도 하나 들어 주세요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "한편으로는 이 집의 위치가 좋아요. 다른 한편으로는 가격이 더 비싸요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "실용적이네요. 뉴스 요약에도 그대로 쓸 수 있겠어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "맞아요. 그리고 더 정확히 말하면으로 세부 내용을 덧붙일 수도 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "오늘은 전문 단어뿐 아니라 대화를 정리하는 방법도 배운 셈이네요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "그게 목표예요. 정보를 이해하고 자연스럽게 이야기하는 거예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "reaction",
+          "text": "짧게 연습해 보세요. 오늘 첫눈에는을 넣어서 문장을 하나 만들어 보세요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "그리고 다른 한편으로는을 사용해서 두 번째 관점도 붙여 보세요.",
           "optional": false
         },
         {
