@@ -1,56 +1,10 @@
 {
   "date": "2026-10-07",
-  "status": "CONTENT_PREP",
+  "status": "REPAIR_REQUIRED",
   "publishable": false,
-  "blocker": null,
-  "next_action": "Build incoming/2026-10-07.json from the verified source brief, validate against docs/EPISODE_BUNDLE.md, then run Journey Talk Production Daily. Do not publish until all five editions pass QA.",
-  "verified_sources": [
-    {
-      "source": "Reuters",
-      "title": "Francis Halzen wins Nobel physics prize for Antarctic 'ghost particle' hunt",
-      "url": "https://www.reuters.com/science/francis-halzen-wins-2026-nobel-prize-physics-2026-10-06/",
-      "facts": [
-        "Francis Halzen won the 2026 Nobel Prize in Physics for creating the IceCube neutrino observatory in Antarctic ice.",
-        "IceCube uses more than 5,000 sensors in about a cubic kilometre of ice and traces high-energy neutrinos back toward cosmic sources.",
-        "IceCube-Gen2 is planned for 2033 and is intended to detect roughly ten times as many neutrinos."
-      ]
-    },
-    {
-      "source": "Reuters",
-      "title": "Alien 'phoenix planet' was born from the ashes of a dying star",
-      "url": "https://www.reuters.com/science/alien-phoenix-planet-was-born-ashes-dying-star-2026-10-06/",
-      "facts": [
-        "Researchers reported a gas-giant exoplanet apparently formed from material expelled during its host star's death and now orbiting the resulting white dwarf.",
-        "The system is about 250 light-years away near Cetus; the planet orbits every 4.4 days.",
-        "Researchers used Hubble, TESS and FUSE data and hope to use the James Webb Space Telescope to confirm the conclusion."
-      ]
-    },
-    {
-      "source": "Reuters",
-      "title": "Fusion firm Type One in $200 million Siemens Energy-backed raise",
-      "url": "https://www.reuters.com/business/energy/fusion-firm-type-one-200-million-siemens-energy-backed-raise-2026-10-06/",
-      "facts": [
-        "Type One Energy raised $200 million in Series B funding, bringing total funding to more than $400 million.",
-        "The company is developing a stellarator and an engineering prototype called Infinity One at Bull Run in Tennessee.",
-        "Type One hopes to launch commercial plant Infinity Two within a decade and is working toward a manufacturing partnership with Siemens."
-      ]
-    },
-    {
-      "source": "Reuters",
-      "title": "Google enters massive 3.6-GW power deal with Constellation Energy",
-      "url": "https://www.reuters.com/business/energy/google-enters-massive-36-gw-power-deal-with-constellation-energy-2026-10-06/",
-      "facts": [
-        "Google contracted for 3,590 MW of power from Constellation Energy, with about a quarter tied to new nuclear capacity.",
-        "The arrangement includes a 20-year agreement for 890 MW from upgraded nuclear plants and a 15-year agreement for another 2,700 MW in PJM.",
-        "The first upgraded nuclear supply is expected as early as 2028."
-      ]
-    }
-  ],
-  "contract_notes": [
-    "Exactly five episodes: de-DE, es-ES, ru-RU, zh-CN, ko-KR.",
-    "10-15 minutes without time stretching; target about 12 minutes and 50-75 turns.",
-    "Both hosts active and role-rotated; target language majority; Japanese navigation concise.",
-    "Required intents: intro, story_intro, question, reaction, teaching, review, trivia, closing.",
-    "No release until all five MP3s and QA PASS exist."
-  ]
+  "last_run_id": 37557378405,
+  "failed_gate": "script_preflight_duration",
+  "observed": "de estimated duration 424.5s; preflight requires 555-945s and final audio 600-900s",
+  "next_action": "Expand the five language scripts with natural language-specific teaching and conversation; do not lower the duration contract or time-stretch. Re-run production, inspect the next failing gate, and continue until all five QA PASS.",
+  "connector_note": "A full atomic bundle replacement was attempted but blocked by connector safety checks; preserve the current valid source facts and repair only duration/content."
 }
