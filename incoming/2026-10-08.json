@@ -1,6 +1,6 @@
 {
   "date": "2026-10-08",
-  "generator": "chatgpt-closed-loop-producer-v1",
+  "generator": "chatgpt-closed-loop-producer-v2-duration-repair",
   "episodes": [
     {
       "slug": "de",
@@ -365,6 +365,146 @@
           "language": "ja-JP",
           "intent": "review",
           "text": "今日は nachweisen、entstehen、genauer gesagt の三つを持ち帰りましょう。ニュースを覚えるだけでなく、自分の会話で一度使うのがおすすめです。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Lass uns zum Schluss noch üben, wie man Nachrichten natürlich zusammenfasst. Statt nur Fakten aufzuzählen, kannst du zuerst die Hauptidee nennen und danach ein Beispiel geben.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Eine gute Form ist: Einfach gesagt, danach folgt die kurze Erklärung. Wenn mehr Genauigkeit nötig ist, ergänzt du: Genauer gesagt.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Beim Neutrino-Thema könntest du sagen: Einfach gesagt sind diese Teilchen schwer zu messen. Genauer gesagt reagieren sie nur sehr selten mit Materie.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Auch deshalb ist nützlich. Es verbindet Ursache und Folge: Das Signal ist schwer zu erkennen, deshalb braucht man einen besonderen Detektor.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Bei wissenschaftlichen Meldungen helfen vorsichtige Wörter wie offenbar oder vermutlich. So klingt eine Interpretation nicht wie eine absolute Gewissheit.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Zum Planeten passt also: Er ist offenbar aus Material entstanden, das nach der Entwicklung des Sterns vorhanden war. Die Formulierung bleibt bewusst vorsichtig.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Wenn du zwei Themen vergleichst, kannst du sagen: Beide haben etwas gemeinsam. Oder: Im Unterschied dazu geht es beim dritten Thema um etwas anderes.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Die ersten beiden Geschichten haben Weltraumforschung gemeinsam. Im Unterschied dazu geht es bei Mistral um künstliche Intelligenz und Infrastruktur.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Solche Verbindungen machen ein Gespräch lebendiger, weil du nicht nur Schlagzeilen wiederholst, sondern eine eigene Struktur baust.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Eine weitere nützliche Frage ist: Warum ist das interessant? Damit gibst du deinem Gesprächspartner Raum, Bedeutung statt nur Details zu erklären.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Beim Detektor lautet eine mögliche Antwort: Er eröffnet eine zusätzliche Möglichkeit, sehr energiereiche Vorgänge im Kosmos zu untersuchen.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Beim Phönixplaneten ist interessant, dass seine Entstehungsgeschichte nicht dem einfachen Bild eines Planeten um einen jungen Stern entspricht.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Und beim KI-Modell ist interessant, welche Teile zugänglich werden und was Organisationen damit auf eigener Infrastruktur tun können.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Hier lohnt sich wieder genauer gesagt. Das Wort offen allein kann ungenau sein, also präzisierst du danach, was tatsächlich zugänglich ist.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Jetzt drei kurze Satzanfänge zum Mitnehmen: Einfach gesagt. Genauer gesagt. Im Unterschied dazu.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "question",
+          "text": "Mit diesen drei Anfängen kannst du erklären, präzisieren und vergleichen. Das reicht schon für viele echte Gespräche.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "example",
+          "text": "Probier ein eigenes Beispiel: Einfach gesagt ist das Thema kompliziert. Genauer gesagt gibt es mehrere Bedingungen, die man unterscheiden muss.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "teaching",
+          "text": "Und für einen Vergleich: Die ersten beiden Beispiele handeln von Beobachtung. Im Unterschied dazu geht es im dritten um Nutzung und Betrieb.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "de-DE",
+          "intent": "explanation",
+          "text": "Das Ziel ist nicht, jede Nachricht Wort für Wort zu merken. Wichtiger ist, dass du mit wenigen Ausdrücken selbst darüber sprechen kannst.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "de-DE",
+          "intent": "conversation",
+          "text": "Damit haben wir Fakten, Wortschatz und Gesprächsstruktur zusammengebracht. Genau diese Verbindung macht Nachrichten zu brauchbarem Sprachtraining.",
           "optional": false
         },
         {
@@ -744,6 +884,146 @@
         {
           "speaker": "MC_F",
           "language": "es-ES",
+          "intent": "question",
+          "text": "Antes de terminar, vamos a practicar cómo resumir noticias de forma natural. En vez de enumerar datos, puedes dar primero la idea principal y después un ejemplo.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Una pareja muy útil es dicho de forma sencilla y más exactamente. La primera expresión orienta; la segunda añade precisión.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Con los neutrinos podrías decir: dicho de forma sencilla, son difíciles de detectar. Más exactamente, interactúan muy poco con la materia.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "También sirve por eso para unir causa y consecuencia: la señal es difícil de observar, por eso hacen falta detectores especiales.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "En noticias científicas conviene marcar la incertidumbre con expresiones como al parecer o según los investigadores.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Con el planeta podrías decir: al parecer se formó a partir de material relacionado con una estrella que ya había evolucionado. Así no afirmas más de lo que sabes.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Para comparar temas, tener en común y en cambio son muy prácticos. Te permiten construir una relación entre dos ideas.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Las dos primeras historias tienen en común el espacio. En cambio, la tercera se centra en inteligencia artificial e infraestructura.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Eso hace que la conversación suene más personal, porque no repites titulares: organizas las noticias con tus propias conexiones.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Otra pregunta que funciona muy bien es: ¿por qué es interesante? Obliga a pasar del dato a su significado.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "En el caso del detector, una respuesta posible es que ofrece otra manera de estudiar fenómenos muy energéticos del universo.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "En el caso del planeta, llama la atención que su historia de formación sea distinta de la imagen simple de un planeta alrededor de una estrella joven.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Y con la inteligencia artificial importa distinguir qué parte del modelo es accesible y qué puede ejecutarse en infraestructura propia.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "Por eso más exactamente vuelve a ser útil. Si una palabra como abierto es demasiado amplia, puedes precisar justo después.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Tres comienzos para llevarte hoy: dicho de forma sencilla, más exactamente y en cambio.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "question",
+          "text": "Con esas tres expresiones puedes explicar, precisar y contrastar. Son funciones muy frecuentes en conversaciones reales.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "example",
+          "text": "Prueba un ejemplo propio: dicho de forma sencilla, el tema es complejo. Más exactamente, hay varias condiciones que debemos distinguir.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "teaching",
+          "text": "Y para contrastar: las dos primeras historias hablan de observación. En cambio, la tercera habla de uso e infraestructura.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
+          "intent": "explanation",
+          "text": "No hace falta memorizar cada detalle de las noticias. Es más útil poder contar la idea con palabras que luego puedas reutilizar.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "es-ES",
+          "intent": "conversation",
+          "text": "Así unimos información, vocabulario y estructura de conversación. Esa mezcla convierte las noticias en práctica de idioma.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "es-ES",
           "intent": "closing",
           "text": "Gracias por acompañarnos. Nos escuchamos en la próxima edición de Journey Talk.",
           "optional": false
@@ -1113,6 +1393,146 @@
           "language": "ja-JP",
           "intent": "review",
           "text": "今日は обнаружить、возникнуть из、точнее говоря。ニュースの文脈ごと覚えると、単語だけより思い出しやすくなります。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Перед завершением потренируем естественный пересказ новостей. Вместо списка фактов сначала можно назвать главную мысль, а затем привести пример.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Очень полезная пара выражений — проще говоря и точнее говоря. Первое даёт ориентир, второе добавляет важную деталь.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Про нейтрино можно сказать: проще говоря, их трудно обнаружить. Точнее говоря, они очень редко взаимодействуют с веществом.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Полезно и слово поэтому: сигнал трудно заметить, поэтому исследователям нужен особый детектор.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "В научных новостях важно обозначать степень уверенности. Для этого подходят по-видимому, вероятно и по словам исследователей.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "Про планету можно осторожно сказать: по-видимому, она сформировалась из материала, связанного с уже эволюционировавшей звездой.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Для сравнения тем пригодятся выражения иметь общее и в отличие от. Они помогают связать разные новости.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "Первые две истории связаны с космосом. В отличие от них, третья посвящена искусственному интеллекту и инфраструктуре.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Так разговор становится живее: ты не просто повторяешь заголовки, а сам показываешь связь между сюжетами.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "Ещё один полезный вопрос — почему это интересно? Он переводит разговор от отдельного факта к его значению.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "В истории с детектором можно ответить, что он даёт дополнительный способ изучать очень энергичные процессы во Вселенной.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "В истории с планетой интересно, что её происхождение отличается от простого представления о планете рядом с молодой звездой.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "А в теме искусственного интеллекта важно различать, что именно доступно и что организация может запускать на своей инфраструктуре.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Здесь снова помогает точнее говоря. Если слово открытый слишком широкое, после него можно сразу уточнить смысл.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "Три начала фразы на сегодня: проще говоря, точнее говоря и в отличие от.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "question",
+          "text": "С ними можно объяснять, уточнять и сравнивать. Эти три действия постоянно нужны в обычном разговоре.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "example",
+          "text": "Попробуй свой пример: проще говоря, тема сложная. Точнее говоря, в ней есть несколько условий, которые важно различать.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "teaching",
+          "text": "И пример сравнения: первые две истории связаны с наблюдением. В отличие от них, третья связана с использованием технологии.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ru-RU",
+          "intent": "explanation",
+          "text": "Не обязательно помнить каждую деталь новости. Гораздо полезнее уметь пересказать основную мысль своими словами.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ru-RU",
+          "intent": "conversation",
+          "text": "Так мы соединяем факты, лексику и структуру разговора. Именно это превращает новости в практику языка.",
           "optional": false
         },
         {
@@ -1492,6 +1912,146 @@
         {
           "speaker": "MC_F",
           "language": "zh-CN",
+          "intent": "question",
+          "text": "结束前，我们再练一下怎么自然地总结新闻。不要只列事实，可以先说主要意思，再补一个例子。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "两个很好用的表达是简单地说和更准确地说。前一个先给方向，后一个再补重要细节。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "说到中微子，可以这样说：简单地说，它很难探测。更准确地说，它很少和物质发生相互作用。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "所以也很有用。信号很难发现，所以研究人员需要特别的探测设备。原因和结果就连起来了。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "科学新闻里还要注意确定程度。可以用看起来、可能、研究人员认为，让判断和事实有所区别。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "说到那颗行星，可以谨慎地说，它看起来是由恒星演化后留下的相关物质形成的。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "比较不同话题时，可以用共同点是和相比之下。这样就不只是重复三个标题。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "前两个话题的共同点是太空研究。相比之下，第三个话题关注人工智能和基础设施。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "有了这种连接，对话会更像自己的表达，因为你在主动整理信息之间的关系。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "还有一个很好用的问题：为什么这件事有意思？这个问题会把对话从事实带到意义。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "谈到探测器，可以说，它给研究高能宇宙现象增加了一种不同的信息来源。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "谈到行星，有意思的是它的形成故事和年轻恒星周围形成行星的简单印象不一样。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "谈到人工智能，则要区分到底什么内容可以获得，以及组织能在自己的基础设施上做什么。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "所以更准确地说又派上用场了。如果开放这个词太宽，就马上补充具体指什么。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "今天带走三个开头：简单地说，更准确地说，相比之下。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "question",
+          "text": "这三个表达分别帮助我们解释、修正和比较。在真实聊天里都很常见。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "example",
+          "text": "试一个自己的例子：简单地说，这个问题很复杂。更准确地说，我们需要区分几个不同条件。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "teaching",
+          "text": "再试比较：前两个故事和观察有关。相比之下，第三个故事更强调技术的使用和运行。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
+          "intent": "explanation",
+          "text": "不用记住新闻里的每一个细节。更重要的是能用自己的话说出主要意思。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "zh-CN",
+          "intent": "conversation",
+          "text": "这样我们把事实、词汇和对话结构放在一起，新闻就真正变成了语言练习。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "zh-CN",
           "intent": "closing",
           "text": "感谢收听Journey Talk。我们下次再见。",
           "optional": false
@@ -1861,6 +2421,146 @@
           "language": "ja-JP",
           "intent": "review",
           "text": "今日は 감지하다、〜에서 생겨나다、더 정확히 말하면。해요체を崩さず、相槌は意味のある場所だけで使います。",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "마치기 전에 뉴스를 자연스럽게 요약하는 연습을 조금 더 해볼게요. 사실만 나열하지 말고 먼저 핵심을 말한 뒤 예를 붙이면 좋아요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "쉽게 말하면과 더 정확히 말하면은 같이 기억하기 좋은 표현이에요. 하나는 방향을 잡고 다른 하나는 세부 내용을 더해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "중성미자 이야기는 이렇게 말할 수 있어요. 쉽게 말하면 찾기 어려워요. 더 정확히 말하면 물질과 거의 반응하지 않아요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "그래서도 유용해요. 신호를 찾기 어려워요. 그래서 특별하고 민감한 검출 장비가 필요해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "과학 뉴스에서는 확실성의 정도도 보여줘야 해요. 보이는 것으로는, 아마, 연구진에 따르면 같은 표현이 도움이 돼요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "행성 이야기는 조심스럽게 말하면, 별이 진화한 뒤 남은 관련 물질에서 형성된 것으로 보여요라고 할 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "서로 다른 주제를 비교할 때는 공통점은과 반면에가 편리해요. 세 개의 제목을 그냥 반복하지 않아도 돼요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "앞의 두 이야기는 우주 연구라는 공통점이 있어요. 반면에 세 번째 이야기는 인공지능과 인프라를 다뤄요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "이렇게 연결하면 대화가 더 자기 말처럼 들려요. 뉴스 사이의 관계를 스스로 정리하기 때문이에요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "또 좋은 질문은 왜 이게 흥미로운가요예요. 단순한 사실에서 의미로 대화를 옮길 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "검출기 이야기에서는 우주의 매우 높은 에너지 현상을 연구할 다른 정보 통로를 준다는 점을 말할 수 있어요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "행성 이야기에서는 형성 과정이 젊은 별 주변의 행성이라는 단순한 이미지와 다르다는 점이 흥미로워요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "인공지능 이야기에서는 정확히 무엇이 공개되고 자체 인프라에서 무엇을 할 수 있는지 구분하는 게 중요해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "그래서 더 정확히 말하면이 다시 유용해요. 열린 모델이라는 말이 너무 넓으면 바로 뒤에서 뜻을 구체화하면 돼요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "오늘 가져갈 문장 시작 표현 세 개는 쉽게 말하면, 더 정확히 말하면, 반면에예요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "question",
+          "text": "이 세 표현으로 설명하고, 다듬고, 비교할 수 있어요. 실제 대화에서 자주 필요한 기능이에요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "example",
+          "text": "자기 예를 만들어 보세요. 쉽게 말하면 이 문제는 복잡해요. 더 정확히 말하면 몇 가지 조건을 구분해야 해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "teaching",
+          "text": "비교도 해볼게요. 앞의 두 이야기는 관측과 관련이 있어요. 반면에 세 번째는 기술의 사용과 운영에 더 가까워요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_F",
+          "language": "ko-KR",
+          "intent": "explanation",
+          "text": "뉴스의 모든 세부 사항을 외울 필요는 없어요. 핵심을 자기 말로 다시 이야기할 수 있는 게 더 중요해요.",
+          "optional": false
+        },
+        {
+          "speaker": "MC_M",
+          "language": "ko-KR",
+          "intent": "conversation",
+          "text": "이렇게 사실, 어휘, 대화 구조를 함께 연습하면 뉴스가 실제 언어 연습으로 바뀌어요.",
           "optional": false
         },
         {
