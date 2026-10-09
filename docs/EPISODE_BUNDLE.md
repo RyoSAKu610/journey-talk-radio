@@ -1,10 +1,14 @@
 # Journey Talk production episode bundle
 
-The production renderer does **not** call Gemini or any paid LLM API. A daily content producer writes one reviewed JSON bundle to:
+A reviewed script for a day can be committed as one JSON bundle:
 
 `incoming/YYYY-MM-DD.json`
 
-The GitHub Actions pipeline validates that file, renders five language editions, runs audio QA, and publishes only when every edition passes.
+When it exists, `daily-multilang.yml` uses these scripts instead of having the script models write new ones
+(`build_language_episodes.py --bundle`). The study materials (Japanese translations, vocabulary, quiz) are added
+by the script models when a key is configured; the voices come from the normal TTS order (Fish Audio, Gemini,
+CosyVoice on Kaggle / Modal / the Actions CPU, Google Cloud, Edge as the last resort). Past days can be built
+from their bundles with the workflow's `dates` input.
 
 ## Required top-level shape
 
@@ -49,18 +53,20 @@ Exactly five episodes are required: `de`, `es`, `ru`, `zh`, `ko`.
 
 ## Intents
 
-Every utterance must declare one of:
+Each utterance should declare one of the intents below (kept as metadata). `review_slow` target-language lines
+are read slowly (0.75×) with a pause after them for shadowing.
 
 `intro`, `story_intro`, `conversation`, `question`, `reaction`, `explanation`, `teaching`, `example`, `review`, `review_slow`, `trivia`, `closing`.
 
-Every episode must include at least: `intro`, `story_intro`, `question`, `reaction`, `teaching`, `review`, `trivia`, `closing`.
+Every episode should include at least: `intro`, `story_intro`, `question`, `reaction`, `teaching`, `review`, `trivia`, `closing`.
 
-`review` and `review_slow` may intentionally repeat a useful expression. Other exact duplicate lines are rejected.
+`review` and `review_slow` may intentionally repeat a useful expression; avoid other exact duplicates.
 
 ## Duration and writing style
 
-- Production audio must land between 10 and 15 minutes **without time stretching**.
-- Aim for approximately 12 minutes and 50–75 conversational turns.
+- Aim for 10–15 minutes of audio (about 12) and 60–75 conversational turns. Target-language lines are read at a
+  learner pace (0.85×), so a script needs roughly 8,000 characters for German/Spanish/Russian, 2,600 for Chinese
+  and 3,800 for Korean (the 2026-10-07 bundle, at about half of that, renders to only 6–7 minutes).
 - Individual turns should usually be 1–3 short spoken sentences.
 - Use natural reactions and follow-up questions; avoid textbook A/B dialogue.
 - Do not put URLs or Markdown in spoken text.
@@ -69,16 +75,8 @@ Every episode must include at least: `intro`, `story_intro`, `question`, `reacti
 
 ## Publishing gate
 
-A bundle is not publishable until all of these pass:
-
-1. JSON/content contract
-2. configured voice availability
-3. complete TTS rendering with per-utterance retry
-4. 10–15 minute duration without speed-forcing
-5. two-pass loudness normalization
-6. full MP3 decode
-7. long-silence and clipping/volume checks
-8. sampled language-aware Whisper verification
-9. feed generation and final QA status `PASS`
-
-If any gate fails, the day's MP3s are not published.
+The structure is checked when the bundle is loaded (speakers, languages, no spoken URLs, both hosts and both
+languages present). Length is judged on the rendered audio: 5 to 18 minutes for a bundle edition
+(`episode.bundle_audio_seconds`), aiming for about 12. Each edition then passes audio QA on its own (full decode,
+long silences, loudness and peak, Whisper comparison); only editions that pass are published, the others are
+reported in the run summary and `qa-report.json`.
