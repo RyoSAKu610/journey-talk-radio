@@ -6,10 +6,13 @@ on:
     paths:
       - ".github/workflows/daily-multilang.yml"
       - "cloud_languages.yaml"
+      - "incoming/**"
       - "scripts/build_language_episodes.py"
       - "scripts/build_weekly_review.py"
       - "scripts/render_language_episodes.py"
       - "scripts/tts_engines.py"
+      - "scripts/cosyvoice_core.py"
+      - "scripts/cosyvoice_worker.py"
       - "scripts/modal_cosyvoice.py"
       - "scripts/qa_language_episodes.py"
       - "scripts/publish_multilang_site.py"
@@ -22,13 +25,17 @@ on:
     - cron: "0 22 * * *"
   workflow_dispatch:
     inputs:
+      dates:
+        description: "Dates to build, YYYY-MM-DD, comma-separated (blank = today in Japan). A date with incoming/DATE.json uses those scripts."
+        required: false
+        type: string
       weekly_review:
-        description: "Also build the weekend review editions today"
+        description: "Also build the weekend review editions"
         type: boolean
         default: false
 
 concurrency:
-  group: journey-talk-cloud-daily
+  group: journey-talk-cloud-daily-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -37,33 +44,92 @@ permissions:
   id-token: write
 
 jobs:
-  build-publish:
+  plan:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      dates: ${{ steps.dates.outputs.json }}
+      today: ${{ steps.dates.outputs.today }}
+    steps:
+      - name: Resolve dates (Japan time)
+        id: dates
+        shell: bash
+        env:
+          REQUESTED: ${{ inputs.dates }}
+        run: |
+          TODAY="$(TZ=Asia/Tokyo date +%F)"
+          LIST="${REQUESTED:-$TODAY}"
+          JSON="["
+          for DATE in ${LIST//,/ }; do
+            if [[ ! "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+              echo "::error::Invalid date: $DATE (use YYYY-MM-DD)"; exit 2
+            fi
+            JSON+="\"$DATE\","
+          done
+          JSON="${JSON%,}]"
+          echo "json=$JSON" >> "$GITHUB_OUTPUT"
+          echo "today=$TODAY" >> "$GITHUB_OUTPUT"
+          echo "Dates: $JSON" >> "$GITHUB_STEP_SUMMARY"
+
+  build-publish:
+    needs: plan
+    runs-on: ubuntu-latest
+    # The runner-CPU CosyVoice tier is time-boxed (tts.cosyvoice_local.max_minutes); this leaves room around it.
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 1  # days are published one after another (shared history and feeds)
+      matrix:
+        date: ${{ fromJSON(needs.plan.outputs.dates) }}
     env:
       TZ: Asia/Tokyo
       PYTHONUNBUFFERED: "1"
+      HF_HOME: ${{ github.workspace }}/.cache/huggingface
+      DATE: ${{ matrix.date }}
+      # Only the main branch publishes; runs on other branches render, check and keep the MP3s as an artifact.
+      PUBLISH: ${{ github.ref == 'refs/heads/main' }}
+      # Script writers (any one is enough; reviewed scripts in incoming/DATE.json need none).
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # Voices (each optional; Edge TTS is the keyless last resort).
+      FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
-      GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME || vars.KAGGLE_USERNAME }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_TTS_MODEL: ${{ vars.OPENAI_TTS_MODEL }}
       TTS_ORDER: ${{ vars.TTS_ORDER }}
+      PODCAST_AUTHOR: ${{ vars.PODCAST_AUTHOR }}
+      PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
 
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      # Python 3.10 is what CosyVoice targets; it runs in its own virtualenv only if the CPU tier is reached.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Cache Whisper and CosyVoice models
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/huggingface
+            .cache/cosyvoice/model
+            .cache/cosyvoice/source
+          key: ${{ runner.os }}-journey-models-whisper-base-cosyvoice3-074ca6d
 
       - name: Install audio and Python dependencies
         run: |
@@ -71,112 +137,165 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install --requirement requirements.txt
 
-      - name: Verify cloud contract
+      - name: Verify code and configuration
         run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "::error title=GEMINI_API_KEY is not set::Add a Google AI Studio key as repository secret GEMINI_API_KEY (Settings → Secrets and variables → Actions)."
-            {
-              echo "## ❌ GEMINI_API_KEY が未設定です"
-              echo ""
-              echo "1. https://aistudio.google.com/apikey でAPIキーを発行"
-              echo "2. Settings → Secrets and variables → Actions → New repository secret"
-              echo "3. Name: \`GEMINI_API_KEY\` / Secret: 発行したキー"
-              echo "4. Actions → Journey Talk Cloud Daily → Run workflow で再実行"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
           python -m unittest discover -s tests -p "test_learning_pipeline.py" -v
-          python -m py_compile scripts/build_language_episodes.py scripts/build_weekly_review.py scripts/render_language_episodes.py scripts/tts_engines.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
+          python -m py_compile scripts/build_language_episodes.py scripts/build_weekly_review.py scripts/render_language_episodes.py \
+            scripts/tts_engines.py scripts/cosyvoice_core.py scripts/cosyvoice_worker.py scripts/qa_language_episodes.py scripts/publish_multilang_site.py
           python - <<'PY'
           import yaml
           cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))
           assert [x["slug"] for x in cfg["languages"]] == ["de", "es", "ru", "zh", "ko"]
           assert cfg["episode"]["minimum_seconds"] == 600
           assert cfg["episode"]["maximum_seconds"] == 900
+          assert "openai" not in cfg["tts"]["order"], "paid engines stay out of the default order"
           print("cloud contract: PASS")
           PY
+          {
+            echo "## Journey Talk ${DATE}"
+            echo ""
+            echo "| | 設定 |"
+            echo "|---|---|"
+            for NAME in GEMINI_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY FISH_API_KEY KAGGLE_API_TOKEN MODAL_TOKEN_ID GOOGLE_TTS_API_KEY; do
+              if [ -n "${!NAME}" ]; then echo "| $NAME | ✅ |"; else echo "| $NAME | – |"; fi
+            done
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Resolve Japan date
+      - name: Resolve weekday
         id: day
-        run: |
-          echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
-          echo "weekday=$(TZ=Asia/Tokyo date +%u)" >> "$GITHUB_OUTPUT"
+        run: echo "weekday=$(date -d "$DATE" +%u)" >> "$GITHUB_OUTPUT"
 
-      - name: Generate five language editions
+      - name: Write or load the five language scripts
+        shell: bash
         run: |
-          DATE="${{ steps.day.outputs.date }}"
-          python scripts/build_language_episodes.py --date "$DATE"
+          if [ -f "incoming/${DATE}.json" ]; then
+            echo "Using reviewed scripts from incoming/${DATE}.json" >> "$GITHUB_STEP_SUMMARY"
+            python scripts/build_language_episodes.py --date "$DATE" --bundle "incoming/${DATE}.json"
+          elif [ "$DATE" != "${{ needs.plan.outputs.today }}" ]; then
+            echo "::error::No incoming/${DATE}.json: past days can only be built from reviewed scripts."
+            exit 3
+          elif [ -z "$GEMINI_API_KEY$MISTRAL_API_KEY$OPENROUTER_API_KEY" ]; then
+            echo "::error title=No script writer::Add GEMINI_API_KEY, MISTRAL_API_KEY or OPENROUTER_API_KEY (Settings → Secrets and variables → Actions), or commit incoming/${DATE}.json."
+            exit 1
+          else
+            python scripts/build_language_episodes.py --date "$DATE"
+          fi
 
       - name: Weekend review editions
-        if: steps.day.outputs.weekday == '7' || github.event.inputs.weekly_review == 'true'
-        run: |
-          DATE="${{ steps.day.outputs.date }}"
-          python scripts/build_weekly_review.py --date "$DATE" --docs-dir docs
+        if: steps.day.outputs.weekday == '7' || inputs.weekly_review
+        continue-on-error: true  # a bonus edition; never costs the day's regular editions
+        run: python scripts/build_weekly_review.py --date "$DATE" --docs-dir docs
 
       - name: Deploy CosyVoice on Modal (optional)
         if: env.MODAL_TOKEN_ID != ''
         continue-on-error: true  # if this fails, rendering simply uses the next engine
-        run: modal deploy scripts/modal_cosyvoice.py
+        working-directory: scripts
+        run: modal deploy modal_cosyvoice.py
 
       - name: Render MP3 files
         run: |
-          DATE="${{ steps.day.outputs.date }}"
           python scripts/render_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
             --output-dir "build/languages/$DATE"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os
+          media = json.load(open(f"build/languages/{os.environ['DATE']}/media-manifest.json", encoding="utf-8"))
+          print("| 言語 | 長さ | 音声エンジン |\n|---|---|---|")
+          for item in media["episodes"]:
+              print(f"| {item['slug']} | {item['duration_seconds'] / 60:.1f} 分 | {item['tts']} |")
+          for item in media.get("failed", []):
+              print(f"| {item['slug']} | ❌ | {item['error'][:120]} |")
+          PY
 
-      - name: Full-file audio QA and Whisper verification
+      - name: Audio QA (each edition on its own)
         run: |
-          DATE="${{ steps.day.outputs.date }}"
           python scripts/qa_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
             --media-dir "build/languages/$DATE" \
             --output-dir "build/qa/$DATE"
 
-      - name: Publish date-stamped cloud archive
+      - name: Keep the MP3s as a run artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: journey-talk-${{ matrix.date }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            output/languages/${{ matrix.date }}/
+            build/languages/${{ matrix.date }}/*.mp3
+            build/languages/${{ matrix.date }}/media-manifest.json
+            build/qa/${{ matrix.date }}/
+
+      - name: Publish date-stamped release (QA-passed editions)
+        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DATE="${{ steps.day.outputs.date }}"
           TAG="multilang-${DATE}"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
             --title "Journey Talk — ${DATE}" \
-            --notes "Verified 10–15 minute language-learning MP3 editions generated from current RSS news. Study with synced scripts, vocabulary and quizzes on the Journey Talk web player."
-          gh release upload "$TAG" build/languages/"$DATE"/*.mp3 --clobber
+            --notes "Verified language-learning MP3 editions with synced scripts, vocabulary and quizzes on the Journey Talk web player."
+          FILES=$(python - <<'PY'
+          import json, os
+          day = os.environ["DATE"]
+          qa = json.load(open(f"build/qa/{day}/qa-report.json", encoding="utf-8"))
+          for item in qa["episodes"]:
+              if item["status"] == "PASS":
+                  audio = item["audio"]
+                  print(f"build/languages/{day}/{audio}")
+                  print(f"build/languages/{day}/{audio[:-4]}.offline.mp3")
+          PY
+          )
+          gh release upload "$TAG" $FILES --clobber
           gh release upload "$TAG" output/languages/"$DATE"/*.json output/languages/"$DATE"/*.md --clobber
           gh release upload "$TAG" build/qa/"$DATE"/* --clobber
 
-      - name: Update feed and mobile web index
+      - name: Update feeds and web player data
+        if: env.PUBLISH == 'true'
         run: |
-          DATE="${{ steps.day.outputs.date }}"
+          git pull --rebase --autostash origin main  # the previous day of a backfill may have just been pushed
           python scripts/publish_multilang_site.py \
             --date "$DATE" \
             --episode-dir "output/languages/$DATE" \
             --media-dir "build/languages/$DATE" \
+            --qa-report "build/qa/$DATE/qa-report.json" \
             --docs-dir docs
 
       - name: Persist feed and episode history
+        if: env.PUBLISH == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/episodes.json docs/feed.xml docs/feeds docs/episodes
+          git add docs/episodes.json docs/feed.xml docs/feeds docs/episodes docs/health.json
           git add state 2>/dev/null || true  # free-tier usage counters (Cloud TTS budget)
-          git diff --cached --quiet || git commit -m "publish: Journey Talk ${{ steps.day.outputs.date }}"
-          git pull --rebase origin main
+          git diff --cached --quiet || git commit -m "publish: Journey Talk ${DATE}"
+          git pull --rebase --autostash origin main
           git push origin HEAD:main
+
+  deploy-pages:
+    needs: build-publish
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main  # includes the history the build jobs just pushed
 
       - name: Stage offline audio for the web player
         env:
           GH_TOKEN: ${{ github.token }}
           OFFLINE_DAYS: "3"
         run: |
-          # Low-bitrate copies are served from Pages (same origin) so the player can save them
-          # for offline listening with seeking. They are deployed, never committed.
-          DATE="${{ steps.day.outputs.date }}"
-          mkdir -p "docs/offline/$DATE"
-          cp build/languages/"$DATE"/*.offline.mp3 "docs/offline/$DATE/"
-          for i in $(seq 1 $((OFFLINE_DAYS - 1))); do
-            DAY=$(TZ=Asia/Tokyo date -d "$DATE -$i day" +%F)
+          # Low-bitrate copies are served from Pages (same origin) so the player can save them for offline
+          # listening with seeking. They are deployed, never committed.
+          for i in $(seq 0 $((OFFLINE_DAYS - 1))); do
+            DAY=$(TZ=Asia/Tokyo date -d "-$i day" +%F)
             mkdir -p "docs/offline/$DAY"
             gh release download "multilang-$DAY" --pattern '*.offline.mp3' --dir "docs/offline/$DAY" --clobber \
               || echo "no offline audio for $DAY"

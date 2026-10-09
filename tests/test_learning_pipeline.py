@@ -38,10 +38,23 @@ STORIES = [
 ]
 
 
+# A deterministic key set: Gemini configured, the other script providers not (tests that need them patch them in).
+MODULE_ENV = mock.patch.dict("os.environ", {"GEMINI_API_KEY": "test", "MISTRAL_API_KEY": "", "OPENROUTER_API_KEY": ""})
+
+
+def setUpModule():
+    MODULE_ENV.start()
+
+
+def tearDownModule():
+    MODULE_ENV.stop()
+
+
 def test_cfg() -> dict:
     cfg = copy.deepcopy(BASE_CFG)
     cfg["episode"]["minimum_seconds"] = 30
     cfg["episode"]["parallel_models"] = 1
+    cfg["provider"]["models"] = [m for m in cfg["provider"]["models"] if ":" not in m]  # Gemini only
     return cfg
 
 
@@ -763,7 +776,7 @@ class SpeechEngineTests(unittest.TestCase):
             render = load_script("render_language_episodes")
         except ImportError as exc:
             self.skipTest(f"audio dependencies unavailable: {exc}")
-        self.assertEqual(render.tts_order(BASE_CFG), ["gemini", "cosyvoice", "google_cloud", "openai", "edge"])
+        self.assertEqual(render.tts_order(BASE_CFG), ["fish", "gemini", "kaggle", "cosyvoice", "google_cloud", "cosyvoice_local", "edge"])
         with mock.patch.dict("os.environ", {"TTS_ORDER": "openai"}):
             self.assertEqual(render.tts_order(BASE_CFG), ["openai", "edge"])
 
@@ -782,7 +795,9 @@ class SpeechEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, mock.patch.object(render, "synthesize", fake_edge):
             paths, _, engine = render.render_audio(BASE_CFG, self.utterances[:1], Path(temporary), [gemini, openai])
         self.assertEqual((paths, engine, gemini.calls, openai.calls), (["edge.mp3"], "edge", 1, 1))
-        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "", "GOOGLE_TTS_API_KEY": "", "OPENAI_API_KEY": "", "MODAL_TOKEN_ID": "", "MODAL_TOKEN_SECRET": ""}):
+        no_keys = {"GEMINI_API_KEY": "", "GOOGLE_TTS_API_KEY": "", "OPENAI_API_KEY": "", "MODAL_TOKEN_ID": "", "MODAL_TOKEN_SECRET": "",
+                   "FISH_API_KEY": "", "KAGGLE_USERNAME": "", "KAGGLE_API_TOKEN": "", "KAGGLE_KEY": "", "GITHUB_ACTIONS": "", "COSYVOICE_LOCAL": ""}
+        with mock.patch.dict("os.environ", no_keys):
             self.assertEqual(render.open_engines(BASE_CFG), [])
 
 

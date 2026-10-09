@@ -1,19 +1,20 @@
 """Speech engines for Journey Talk, tried in the order set by cloud_languages.yaml (tts.order).
 
-1. Gemini TTS: the whole episode in ONE multi-speaker request (the free tier allows about ten
-   requests per model per day), then cut into lines. Each line is sent as its own part with a
-   "[long pause]" tag, which makes the hand-over between lines the longest pauses in the take;
-   align_lines() then picks one pause per boundary. Verified on a 24-line take: every clip matched
-   its line.
-2. CosyVoice 3 (open model by Alibaba) on Modal's free monthly GPU credit, with each host's voice cloned
-   from a short Gemini-voiced reference clip; one remote call per episode, exact line timing.
-3. Google Cloud TTS, Chirp 3: HD voices: one request per line (exact timing) inside the 1M
-   characters a month free tier, guarded by a monthly budget kept in the repository.
-4. OpenAI GPT TTS (paid): one request per line, only when OPENAI_API_KEY is set.
-5. Edge TTS lives in render_language_episodes.py and is the last resort.
+- fish: Fish Audio S2.1 Pro through its free API (announced free until 2026-11-30); one request per line,
+  each host cloned from a reference clip, pace set natively.
+- gemini: Gemini TTS, the whole episode in ONE multi-speaker request (the free tier allows about ten requests
+  per model per day), then cut into lines at the "[long pause]" hand-overs by align_lines().
+- kaggle: CosyVoice 3 on a free Kaggle GPU (about 30 hours a week), all pending episodes in one kernel run.
+- cosyvoice: CosyVoice 3 on Modal's free $30/month GPU credit, one remote call per episode.
+- google_cloud: Google Cloud TTS, Chirp 3: HD voices, inside the 1M characters a month free tier.
+- cosyvoice_local: CosyVoice 3 on the GitHub Actions runner's own CPU: free and unlimited for this public
+  repository, slow, time-boxed.
+- openai: OpenAI GPT TTS (paid), only when OPENAI_API_KEY is set and named in TTS_ORDER.
+- Edge TTS lives in render_language_episodes.py and is the last resort.
 
-Gemini and OpenAI return no word timings, so karaoke timings are estimated inside each line.
-Shadowing ("slow") lines are time-stretched after synthesis so every engine slows them the same way.
+Engines with `batch = True` render several episodes in one go (render_many); the others one at a time.
+Engines with `native_pace = True` already speak at the learner / shadowing pace; the rest are time-stretched.
+Cloud engines return no word timings, so karaoke timings are estimated inside each line.
 """
 from __future__ import annotations
 
@@ -23,9 +24,14 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import time
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
 
 import requests
@@ -46,6 +52,9 @@ LANGUAGE_NAMES = {
     "en-US": "American English",
 }
 CJK = re.compile(r"[぀-ヿ㐀-鿿豈-﫿]")
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class TTSError(RuntimeError):
@@ -257,6 +266,7 @@ class CosyVoiceModalTTS:
     """
 
     name = "cosyvoice"
+    native_pace = True
 
     def __init__(self, cfg: dict, client=None):
         settings = cfg["tts"]["cosyvoice"]
@@ -269,22 +279,12 @@ class CosyVoiceModalTTS:
                 raise TTSError("the modal package is not installed") from exc
             client = modal.Cls.from_name(settings["app_name"], "CosyVoice")
         self.client = client
-        root = Path(__file__).resolve().parents[1]
-        self.voices = {}
-        for speaker, voice in settings["voices"].items():
-            base = root / voice["reference"]
-            try:
-                self.voices[speaker] = {
-                    "wav": base.with_suffix(".wav").read_bytes(),
-                    "text": base.with_suffix(".txt").read_text(encoding="utf-8").strip(),
-                    "language": voice["language"],
-                }
-            except OSError as exc:
-                raise TTSError(f"voice reference missing: {exc}") from exc
+        self.cfg = cfg
+        self.voices = load_voice_references(settings["voices"])
         self.model_in_use = "cosyvoice3"
 
     def render(self, utterances: list[dict]) -> list[AudioSegment]:
-        lines = [{"speaker": u["speaker"], "language": u["language"], "text": u["text"]} for u in utterances]
+        lines = cosyvoice_lines(self.cfg, utterances)
         try:
             wavs = self.client().synthesize.remote(lines, self.voices)
         except Exception as exc:  # Modal raises its own types: auth, credit exhausted, deploy missing, CUDA errors
@@ -292,6 +292,417 @@ class CosyVoiceModalTTS:
         if len(wavs) != len(lines):
             raise TTSError(f"CosyVoice returned {len(wavs)} clips for {len(lines)} lines")
         return [trim_silence(AudioSegment.from_file(io.BytesIO(w), format="wav")) for w in wavs]
+
+
+# --------------------------------------------------------------------------- shared by the cloned-voice engines
+
+
+def learner_speed(cfg: dict, utterance: dict) -> float:
+    """Native speaking speed for engines that set the pace themselves (1.0 = the engine's normal pace)."""
+    if utterance.get("slow"):
+        return tempo_from_rate(str(cfg.get("learning", {}).get("slow_rate", "-25%")))
+    if utterance["language"] == "ja-JP":
+        return 1.0
+    return float(cfg["tts"].get("target_language_tempo", 1.0))
+
+
+def load_voice_references(voices: dict, sample_rate: int = 16000) -> dict:
+    """{speaker: {"reference": "assets/voices/mina", "language": "ja-JP"}} -> wav bytes + transcript.
+
+    The clips are re-encoded as 16 kHz mono WAV: that is all the cloning models use, and it keeps requests small.
+    """
+    out = {}
+    for speaker, voice in voices.items():
+        base = ROOT / voice["reference"]
+        try:
+            with base.with_suffix(".wav").open("rb") as handle:
+                clip = AudioSegment.from_file(handle, format="wav").set_frame_rate(sample_rate).set_channels(1)
+            text = base.with_suffix(".txt").read_text(encoding="utf-8").strip()
+        except (OSError, IndexError) as exc:
+            raise TTSError(f"voice reference missing: {exc}") from exc
+        buffer = io.BytesIO()
+        clip.export(buffer, format="wav")
+        out[speaker] = {"wav": buffer.getvalue(), "text": text, "language": voice.get("language", "ja-JP")}
+    return out
+
+
+def cosyvoice_lines(cfg: dict, utterances: list[dict]) -> list[dict]:
+    return [
+        {"speaker": u["speaker"], "language": u["language"], "text": u["text"], "speed": round(learner_speed(cfg, u), 3)}
+        for u in utterances
+    ]
+
+
+def read_clip_dir(directory: Path, count: int) -> list[AudioSegment]:
+    clips = []
+    for index in range(count):
+        path = directory / f"{index:03d}.flac"
+        if not path.is_file():
+            raise TTSError(f"missing clip {path.name}")
+        clips.append(trim_silence(AudioSegment.from_file(path, format="flac")))
+    return clips
+
+
+# --------------------------------------------------------------------------- Fish Audio
+
+
+class FishAudioTTS:
+    """Fish Audio S2.1 Pro through the free API model ("s2.1-pro-free", announced free until 2026-11-30 under fair
+    use, no SLA; requests may be kept to improve the model). One request per line, sent a few at a time.
+
+    Each host is cloned from the same reference clips as CosyVoice, so the voices stay the same across engines,
+    and the learner pace is set natively (prosody.speed). After `available_until` the engine stays out of the
+    way instead of failing every day; HTTP 402 (the free model now needs credit) disables it for the run.
+    """
+
+    name = "fish"
+    native_pace = True
+    ENDPOINT = "https://api.fish.audio/v1/tts"
+
+    def __init__(self, cfg: dict, api_key: str | None = None, session=None, sleep=time.sleep, today: date | None = None):
+        settings = cfg["tts"]["fish"]
+        self.api_key = (api_key if api_key is not None else os.getenv("FISH_API_KEY", "")).strip()
+        if not self.api_key:
+            raise TTSError("FISH_API_KEY is not configured")
+        until = str(settings.get("available_until", "")).strip()
+        if until and (today or date.today()) > date.fromisoformat(until):
+            raise TTSError(f"the free Fish Audio model was announced until {until}; update tts.fish if it is still free")
+        try:
+            import msgpack
+        except ImportError as exc:
+            raise TTSError("the msgpack package is not installed") from exc
+        self.pack = msgpack.packb
+        self.cfg = cfg
+        self.models = list(settings["models"])
+        self.latency = settings.get("latency", "normal")
+        self.parallel = max(1, int(settings.get("parallel_requests", 3)))
+        self.max_attempts = int(settings.get("max_attempts", 5))
+        self.voice_ids = {k: str(v.get("reference_id", "") or "") for k, v in settings["voices"].items()}
+        self.references = load_voice_references(settings["voices"])
+        self.session = session or requests.Session()
+        self.sleep = sleep
+        self.model_in_use: str | None = None
+        self.disabled = ""
+
+    def body(self, utterance: dict) -> dict:
+        body = {
+            "text": utterance["text"],
+            "format": "wav",
+            "sample_rate": 24000,
+            "latency": self.latency,
+            "normalize": True,
+            "prosody": {"speed": learner_speed(self.cfg, utterance), "volume": 0},
+        }
+        voice_id = self.voice_ids.get(utterance["speaker"])
+        if voice_id:
+            body["reference_id"] = voice_id
+        else:
+            reference = self.references[utterance["speaker"]]
+            body["references"] = [{"audio": reference["wav"], "text": reference["text"]}]
+        return body
+
+    def render(self, utterances: list[dict]) -> list[AudioSegment]:
+        if self.disabled:
+            raise TTSError(self.disabled)
+        # Settle on a model with the first line, then send the rest a few at a time.
+        clips = [self.line(utterances[0])]
+        with ThreadPoolExecutor(max_workers=self.parallel) as pool:
+            clips += list(pool.map(self.line, utterances[1:]))
+        return [trim_silence(c) for c in clips]
+
+    def line(self, utterance: dict) -> AudioSegment:
+        if self.disabled:
+            raise TTSError(self.disabled)
+        models = [self.model_in_use] if self.model_in_use else list(self.models)
+        problems: list[str] = []
+        for model in models:
+            try:
+                audio = self._request(model, self.body(utterance))
+            except _ModelUnavailable as exc:
+                problems.append(f"{model}: {exc}")
+                continue
+            self.model_in_use = model
+            return audio
+        raise TTSError("Fish Audio: " + "; ".join(problems))
+
+    def _request(self, model: str, payload: dict) -> AudioSegment:
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/msgpack", "model": model}
+        data = self.pack(payload)
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = self.session.post(self.ENDPOINT, headers=headers, data=data, timeout=(20, 180))
+            except requests.RequestException as exc:
+                if attempt == self.max_attempts:
+                    raise TTSError(f"Fish Audio request failed: {exc}") from exc
+                self.sleep(min(60, 5 * attempt))
+                continue
+            status = response.status_code
+            if status in (401, 403):
+                self.disabled = f"Fish Audio rejected the API key (HTTP {status})"
+                raise TTSError(self.disabled)
+            if status == 402:
+                self.disabled = "Fish Audio asks for payment (HTTP 402): the free model is no longer free for this account"
+                raise TTSError(self.disabled)
+            if status == 404 or (status == 400 and "model" in response.text.lower()):
+                raise _ModelUnavailable(f"HTTP {status}")
+            if status in RETRYABLE and attempt < self.max_attempts:
+                self.sleep(retry_delay(response) or min(60, 5 * 2 ** (attempt - 1)))
+                continue
+            if status >= 400:
+                raise TTSError(f"Fish Audio HTTP {status}: {response.text[:300]}")
+            if not response.content:
+                raise TTSError("Fish Audio returned no audio")
+            return AudioSegment.from_file(io.BytesIO(response.content), format="wav")
+        raise TTSError("Fish Audio: retries exhausted")
+
+
+# --------------------------------------------------------------------------- CosyVoice on the runner's CPU
+
+
+class LocalCosyVoiceTTS:
+    """CosyVoice 3 on the machine running this script, normally the GitHub Actions runner (4 CPUs, free and
+    unlimited for a public repository). No account needed, but CPU synthesis is slow, so it is time-boxed:
+    episodes not finished within `max_minutes` move on to the next engine. Dependencies go into a separate
+    virtualenv the first time it is needed; the model is cached between runs by the workflow.
+    """
+
+    name = "cosyvoice_local"
+    native_pace = True
+    batch = True
+
+    def __init__(self, cfg: dict, runner=subprocess.run, clock=time.time):
+        settings = cfg["tts"]["cosyvoice_local"]
+        if os.getenv("GITHUB_ACTIONS") != "true" and os.getenv("COSYVOICE_LOCAL") != "1":
+            raise TTSError("runs on the GitHub Actions runner only (set COSYVOICE_LOCAL=1 to run it elsewhere)")
+        self.cfg = cfg
+        self.python = os.getenv("COSYVOICE_PYTHON", "") or settings.get("python", "python3.10")
+        if not shutil.which(self.python) and not Path(self.python).is_file():
+            raise TTSError(f"{self.python} is not installed")
+        self.cache = ROOT / settings.get("cache_dir", ".cache/cosyvoice")
+        self.max_minutes = float(os.getenv("COSYVOICE_LOCAL_MINUTES", "") or settings.get("max_minutes", 200))
+        self.torch_index = settings.get("torch_index", "https://download.pytorch.org/whl/cpu")
+        self.voices = load_voice_references(cfg["tts"]["cosyvoice"]["voices"])
+        self.runner = runner
+        self.clock = clock
+        self.started = clock()
+        self.model_in_use = "cosyvoice3-cpu"
+        self.ready = False
+
+    def venv_python(self) -> Path:
+        return self.cache / "venv" / "bin" / "python"
+
+    def setup(self) -> None:
+        if self.ready:
+            return
+        if not self.venv_python().is_file():
+            self.runner([self.python, "-m", "venv", str(self.cache / "venv")], check=True)
+        worker = Path(__file__).resolve().parent / "cosyvoice_worker.py"
+        self.runner(
+            [str(self.venv_python()), str(worker), "--setup", "--source-dir", str(self.cache / "source"),
+             "--model-dir", str(self.cache / "model"), "--torch-index", self.torch_index],
+            check=True,
+        )
+        self.ready = True
+
+    def render(self, utterances: list[dict]) -> list[AudioSegment]:
+        return self.render_many({"episode": utterances})["episode"]
+
+    def render_many(self, episodes: dict[str, list[dict]]) -> dict[str, list[AudioSegment]]:
+        deadline = self.started + self.max_minutes * 60
+        if self.clock() > deadline - 300:
+            raise TTSError("no time left in this run for CPU synthesis")
+        try:
+            self.setup()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise TTSError(f"CosyVoice setup failed: {exc}") from exc
+        with tempfile.TemporaryDirectory(prefix="journey-talk-cosyvoice-") as temp:
+            job_path, out = Path(temp) / "job.json", Path(temp) / "out"
+            job = cosyvoice_job(self.cfg, self.voices, episodes)
+            job_path.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+            worker = Path(__file__).resolve().parent / "cosyvoice_worker.py"
+            try:
+                self.runner(
+                    [str(self.venv_python()), str(worker), "--job", str(job_path), "--out", str(out),
+                     "--source-dir", str(self.cache / "source"), "--model-dir", str(self.cache / "model"),
+                     "--deadline", str(deadline)],
+                    check=True, timeout=max(60, deadline - self.clock() + 600),
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(f"[tts] CosyVoice CPU worker stopped: {exc}")
+            return collect_batch(out, episodes)
+
+
+def cosyvoice_job(cfg: dict, voices: dict, episodes: dict[str, list[dict]]) -> dict:
+    return {
+        "voices": {
+            speaker: {"wav_b64": base64.b64encode(v["wav"]).decode("ascii"), "text": v["text"], "language": v["language"]}
+            for speaker, v in voices.items()
+        },
+        "episodes": [{"slug": slug, "lines": cosyvoice_lines(cfg, lines)} for slug, lines in episodes.items()],
+    }
+
+
+def collect_batch(out: Path, episodes: dict[str, list[dict]]) -> dict[str, list[AudioSegment]]:
+    """Episodes the worker finished (DONE marker and every clip present); the rest are simply absent."""
+    results = {}
+    for slug, lines in episodes.items():
+        directory = out / slug
+        if not (directory / "DONE").is_file():
+            continue
+        try:
+            results[slug] = read_clip_dir(directory, len(lines))
+        except TTSError as exc:
+            print(f"[tts] {slug}: incomplete CosyVoice output ({exc})")
+    return results
+
+
+# --------------------------------------------------------------------------- CosyVoice on Kaggle
+
+
+KAGGLE_BOOTSTRAP = """# Journey Talk: CosyVoice 3 batch synthesis (generated by tts_engines.KaggleCosyVoiceTTS; safe to delete).
+import base64, io, subprocess, sys, time, zipfile
+from pathlib import Path
+
+PAYLOAD = "{payload}"
+work = Path("/kaggle/temp/journey-talk")  # outside /kaggle/working so only the result is kept as output
+work.mkdir(parents=True, exist_ok=True)
+zipfile.ZipFile(io.BytesIO(base64.b64decode(PAYLOAD))).extractall(work)
+common = ["--source-dir", "/kaggle/temp/CosyVoice", "--model-dir", "/kaggle/temp/cosyvoice3"]
+subprocess.run([sys.executable, str(work / "cosyvoice_worker.py"), "--setup", "--torch-index", "{torch_index}", *common], check=True)
+out = work / "out"
+subprocess.run([sys.executable, str(work / "cosyvoice_worker.py"), "--job", str(work / "job.json"), "--out", str(out), "--deadline", str(time.time() + {budget_seconds}), *common], check=True)
+with zipfile.ZipFile("/kaggle/working/tts.zip", "w", zipfile.ZIP_STORED) as archive:
+    for path in out.rglob("*"):
+        if path.is_file():
+            archive.write(path, path.relative_to(out))
+print("done")
+"""
+
+
+class KaggleCosyVoiceTTS:
+    """CosyVoice 3 on a free Kaggle GPU (T4), started from the workflow with `kaggle kernels push`.
+
+    All pending episodes go into ONE private kernel run, so the model is installed and loaded once a day.
+    The kernel needs internet access, which Kaggle allows after phone verification of the account.
+    Needs KAGGLE_USERNAME plus KAGGLE_API_TOKEN (or the older KAGGLE_KEY). The weekly GPU quota (about 30 h)
+    covers a daily run comfortably; if it is used up the kernel fails and the next engine takes over.
+    """
+
+    name = "kaggle"
+    native_pace = True
+    batch = True
+
+    def __init__(self, cfg: dict, runner=subprocess.run, sleep=time.sleep, clock=time.time):
+        settings = cfg["tts"]["kaggle"]
+        self.username = os.getenv("KAGGLE_USERNAME", "").strip()
+        if not self.username or not (os.getenv("KAGGLE_API_TOKEN", "").strip() or os.getenv("KAGGLE_KEY", "").strip()):
+            raise TTSError("KAGGLE_USERNAME and KAGGLE_API_TOKEN (or KAGGLE_KEY) are not configured")
+        self.cli = shutil.which("kaggle") or ""
+        if not self.cli:
+            raise TTSError("the kaggle command is not installed")
+        self.cfg = cfg
+        self.slug = settings.get("kernel_slug", "journey-talk-tts")
+        self.accelerator = settings.get("accelerator", "NvidiaTeslaT4")
+        self.timeout_minutes = float(settings.get("timeout_minutes", 150))
+        self.poll_seconds = float(settings.get("poll_seconds", 60))
+        self.torch_index = settings.get("torch_index", "https://download.pytorch.org/whl/cu121")
+        self.voices = load_voice_references(cfg["tts"]["cosyvoice"]["voices"])
+        self.runner, self.sleep, self.clock = runner, sleep, clock
+        self.model_in_use = "cosyvoice3-kaggle"
+        self.disabled = ""
+
+    @property
+    def kernel(self) -> str:
+        return f"{self.username}/{self.slug}"
+
+    def kaggle(self, *args: str, timeout: float = 300) -> str:
+        result = self.runner([self.cli, *args], capture_output=True, text=True, timeout=timeout)
+        output = (result.stdout or "") + (result.stderr or "")
+        if result.returncode != 0:
+            raise TTSError(f"kaggle {args[0]} {args[1]} failed: {output.strip()[:300]}")
+        return output
+
+    def kernel_folder(self, folder: Path, episodes: dict[str, list[dict]]) -> None:
+        here = Path(__file__).resolve().parent
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.write(here / "cosyvoice_core.py", "cosyvoice_core.py")
+            archive.write(here / "cosyvoice_worker.py", "cosyvoice_worker.py")
+            archive.writestr("job.json", json.dumps(cosyvoice_job(self.cfg, self.voices, episodes), ensure_ascii=False))
+        # Synthesis stops before the workflow gives up polling (setup takes ~15 min), so finished episodes come back.
+        source = KAGGLE_BOOTSTRAP.format(
+            payload=base64.b64encode(buffer.getvalue()).decode("ascii"),
+            torch_index=self.torch_index,
+            budget_seconds=round(max(10.0, self.timeout_minutes - 30) * 60),
+        )
+        (folder / "kernel.py").write_text(source, encoding="utf-8")
+        metadata = {
+            "id": self.kernel,
+            "title": self.slug,
+            "code_file": "kernel.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": "true",
+            "enable_gpu": "true",
+            "enable_tpu": "false",
+            "enable_internet": "true",
+            "machine_shape": self.accelerator,
+            "dataset_sources": [],
+            "competition_sources": [],
+            "kernel_sources": [],
+            "model_sources": [],
+        }
+        (folder / "kernel-metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    def status(self) -> str:
+        text = self.kaggle("kernels", "status", self.kernel, timeout=120).lower()
+        for state in ("complete", "error", "cancel", "running", "queued", "new_script"):
+            if state in text:
+                return state
+        return "unknown"
+
+    def render(self, utterances: list[dict]) -> list[AudioSegment]:
+        return self.render_many({"episode": utterances})["episode"]
+
+    def render_many(self, episodes: dict[str, list[dict]]) -> dict[str, list[AudioSegment]]:
+        if self.disabled:
+            raise TTSError(self.disabled)
+        with tempfile.TemporaryDirectory(prefix="journey-talk-kaggle-") as temp:
+            folder = Path(temp) / "kernel"
+            folder.mkdir()
+            self.kernel_folder(folder, episodes)
+            try:
+                self.kaggle("kernels", "push", "-p", str(folder), "--accelerator", self.accelerator, timeout=600)
+            except (TTSError, subprocess.SubprocessError, OSError) as exc:
+                self.disabled = f"Kaggle push failed: {exc}"
+                raise TTSError(self.disabled) from exc
+            print(f"[tts] Kaggle kernel {self.kernel} started for {len(episodes)} episode(s)")
+            deadline = self.clock() + self.timeout_minutes * 60
+            state = "queued"
+            while self.clock() < deadline:
+                self.sleep(self.poll_seconds)
+                try:
+                    state = self.status()
+                except (TTSError, subprocess.SubprocessError) as exc:
+                    print(f"[tts] Kaggle status check failed ({exc}); retrying")
+                    continue
+                if state in ("complete", "error", "cancel"):
+                    break
+            if state != "complete":
+                self.disabled = f"Kaggle kernel ended as {state!r}"
+                raise TTSError(f"{self.disabled}; see https://www.kaggle.com/code/{self.kernel}")
+            download = Path(temp) / "download"
+            download.mkdir()
+            self.kaggle("kernels", "output", self.kernel, "-p", str(download), "-o", "-q", timeout=1200)
+            archive = download / "tts.zip"
+            if not archive.is_file():
+                raise TTSError("the Kaggle kernel produced no tts.zip")
+            out = Path(temp) / "out"
+            with zipfile.ZipFile(archive) as zipped:
+                zipped.extractall(out)
+            results = collect_batch(out, episodes)
+            print(f"[tts] Kaggle returned {len(results)}/{len(episodes)} episode(s)")
+            return results
 
 
 # --------------------------------------------------------------------------- Google Cloud

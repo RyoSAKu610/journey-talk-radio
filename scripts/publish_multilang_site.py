@@ -128,6 +128,8 @@ def build_feed(
     title: str = "Journey Talk",
     description: str = CHANNEL_DESCRIPTION,
     image: str = "covers/journey-talk.png",
+    author: str = "Journey Talk",
+    owner_email: str = "",
 ) -> ET.ElementTree:
     feed_path = f"feeds/{slug}.xml" if slug else "feed.xml"
     rss = ET.Element("rss", {"version": "2.0"})
@@ -136,8 +138,12 @@ def build_feed(
     text_node(channel, "link", base_url)
     text_node(channel, "language", "ja")
     text_node(channel, "description", description)
-    text_node(channel, f"{{{ITUNES}}}author", "Journey Talk")
+    text_node(channel, f"{{{ITUNES}}}author", author)
     text_node(channel, f"{{{ITUNES}}}explicit", "false")
+    if owner_email:  # podcast directories (Apple, Spotify) verify ownership through this address
+        owner = ET.SubElement(channel, f"{{{ITUNES}}}owner")
+        text_node(owner, f"{{{ITUNES}}}name", author)
+        text_node(owner, f"{{{ITUNES}}}email", owner_email)
     ET.SubElement(channel, f"{{{ITUNES}}}image", {"href": f"{base_url}/{image}"})
     artwork = ET.SubElement(channel, "image")
     text_node(artwork, "url", f"{base_url}/{image}")
@@ -200,6 +206,9 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument("--repository", default=os.getenv("GITHUB_REPOSITORY", "RyoSAKu610/journey-talk-radio"))
     parser.add_argument("--base-url", default="")
+    parser.add_argument("--qa-report", type=Path, help="publish only the editions this QA report marks PASS")
+    parser.add_argument("--author", default=os.getenv("PODCAST_AUTHOR", "") or "Journey Talk")
+    parser.add_argument("--email", default=os.getenv("PODCAST_EMAIL", ""))
     args = parser.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
@@ -212,6 +221,12 @@ def main() -> int:
     manifest = json.loads((args.episode_dir / "manifest.json").read_text(encoding="utf-8"))
     media = json.loads((args.media_dir / "media-manifest.json").read_text(encoding="utf-8"))
     media_by_slug = {x["slug"]: x for x in media["episodes"]}
+    if args.qa_report:
+        qa = json.loads(args.qa_report.read_text(encoding="utf-8"))
+        passed = {x["slug"] for x in qa.get("episodes", []) if x.get("status") == "PASS"}
+        for slug in sorted(set(media_by_slug) - passed):
+            print(f"::warning::{slug}: not published (audio QA did not pass)")
+        media_by_slug = {k: v for k, v in media_by_slug.items() if k in passed}
     detail_dir = args.docs_dir / "episodes" / args.date
     detail_dir.mkdir(parents=True, exist_ok=True)
 
@@ -259,6 +274,7 @@ def main() -> int:
             "detail_url": f"episodes/{args.date}/{detail_path.name}",
             "duration_seconds": media_item["duration_seconds"],
             "bytes": media_item["bytes"],
+            "tts": media_item.get("tts", ""),
         }
         if all("start" in x for x in lines):
             vtt_path = detail_dir / f"{item['slug']}.vtt"
@@ -268,11 +284,17 @@ def main() -> int:
 
     args.docs_dir.mkdir(parents=True, exist_ok=True)
     history_path = args.docs_dir / "episodes.json"
+    if not episodes:
+        print("[site] nothing passed QA; site unchanged")
+        return 1
     history = [x for x in load_history(history_path) if x.get("date") != args.date]
-    history.insert(0, {"date": args.date, "stories": manifest["stories"], "episodes": episodes})
+    history.append({"date": args.date, "stories": manifest["stories"], "episodes": episodes})
+    # Newest first, also when an earlier day is published late (backfill).
+    history.sort(key=lambda day: str(day.get("date", "")), reverse=True)
     history_path.write_text(json.dumps(history, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    write_feed(build_feed(history, base_url), args.docs_dir / "feed.xml")
+    owner_args = {"author": args.author, "owner_email": args.email}
+    write_feed(build_feed(history, base_url, **owner_args), args.docs_dir / "feed.xml")
     for lang in cfg["languages"]:
         write_feed(
             build_feed(
@@ -282,9 +304,19 @@ def main() -> int:
                 title=f"Journey Talk — {lang['japanese_name']}",
                 description=f"最新ニュースを題材にした、日本語ナビ付き{lang['japanese_name']}のデイリー語学ラジオ。",
                 image=f"covers/{lang['slug']}.png",
+                **owner_args,
             ),
             args.docs_dir / "feeds" / f"{lang['slug']}.xml",
         )
+    health = {
+        "status": "PASS",
+        "last_published_date": history[0]["date"],
+        "updated_date": args.date,
+        "episode_count": len(episodes),
+        "engines": {x["slug"]: x.get("tts", "") for x in episodes},
+        "feeds": {"all": f"{base_url}/feed.xml", **{x["slug"]: f"{base_url}/feeds/{x['slug']}.xml" for x in cfg["languages"]}},
+    }
+    (args.docs_dir / "health.json").write_text(json.dumps(health, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[site] {history_path}")
     print(f"[site] {detail_dir}")
     print(f"[feed] {args.docs_dir / 'feed.xml'} + {len(cfg['languages'])} language feeds")

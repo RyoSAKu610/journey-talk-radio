@@ -8,3 +8,5 @@ Pillow==11.3.0
 pydub==0.25.1
 faster-whisper==1.2.0
 modal==1.6.1
+msgpack==1.1.1
+kaggle==2.2.4

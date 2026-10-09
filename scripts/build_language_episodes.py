@@ -33,18 +33,47 @@ def load_config() -> dict:
     return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
 
 
+def provider_of(model: str) -> str:
+    """'mistral:mistral-medium-latest' -> 'mistral'; bare names are Gemini models."""
+    return model.split(":", 1)[0] if ":" in model and model.split(":", 1)[0] in PROVIDER_KEYS else "gemini"
+
+
+# Environment variable holding each script provider's key. A provider without a key is simply not asked.
+PROVIDER_KEYS = {"gemini": "GEMINI_API_KEY", "mistral": "MISTRAL_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+
+
+def has_key(provider: str) -> bool:
+    return bool(os.getenv(PROVIDER_KEYS[provider], "").strip())
+
+
 def text_models(cfg: dict) -> list[str]:
-    """Script-writing models, newest first; GEMINI_MODEL overrides. Models out of quota are skipped."""
+    """Script-writing models in contest order; GEMINI_MODEL overrides the first Gemini model.
+
+    Mixes providers (Gemini, Mistral, OpenRouter free models): each has its own free quota, so a contest
+    round with one model from each costs nothing extra. Models out of quota or without a key are skipped.
+    """
     override = os.getenv("GEMINI_MODEL", "").strip()
-    return [m for m in [override, *cfg["provider"]["models"]] if m and m not in EXHAUSTED]
+    models = [override, *cfg["provider"]["models"]]
+    seen: set[str] = set()
+    out: list[str] = []
+    for model in models:
+        if not model or model in seen or model in EXHAUSTED or not has_key(provider_of(model)):
+            continue
+        seen.add(model)
+        out.append(model)
+    return out
 
 
 def last_resort_models(cfg: dict) -> list[str]:
     """Weaker models used only when no regular model can answer (they write much shorter scripts)."""
-    return [m for m in cfg["provider"].get("last_resort_models", []) if m not in EXHAUSTED]
+    return [m for m in cfg["provider"].get("last_resort_models", []) if m not in EXHAUSTED and has_key(provider_of(m))]
 
 
-# Models whose free-tier daily quota ran out during this run; asking again today only wastes time.
+def any_script_provider() -> bool:
+    return any(has_key(p) for p in PROVIDER_KEYS)
+
+
+# Models whose free daily quota ran out during this run; asking again today only wastes time.
 EXHAUSTED: set[str] = set()
 
 
@@ -93,11 +122,61 @@ def post_gemini(payload: dict, cfg: dict, models: list[str] | None = None):
 
 
 def gemini_json(prompt: str, cfg: dict) -> dict:
+    """Ask the first available script model (any provider) for a JSON object."""
     return gemini_json_from(prompt, cfg)[0]
 
 
+def parse_json_text(text: str, who: str) -> dict:
+    text = text.strip()
+    if not text:
+        raise ValueError(f"{who} returned an empty response")
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        # Some models wrap the JSON in prose or append text after it ("Extra data"); read the first object.
+        start = text.find("{")
+        if start < 0:
+            raise ValueError(f"{who} did not return JSON")
+        try:
+            result, _ = json.JSONDecoder().raw_decode(text[start:])
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{who} returned malformed JSON: {exc}") from exc
+    if not isinstance(result, dict):
+        raise ValueError(f"{who} response must be a JSON object")
+    return result
+
+
 def gemini_json_from(prompt: str, cfg: dict, models: list[str] | None = None) -> tuple[dict, str]:
-    """Ask the first available model in `models` for a JSON answer; returns (answer, model)."""
+    """Ask the first available model in `models` (any provider) for a JSON answer; returns (answer, model).
+
+    Models are tried in order, grouped by provider so each provider's own fallback logic applies.
+    """
+    models = list(models) if models else text_models(cfg)
+    problems: list[str] = []
+    index = 0
+    while index < len(models):
+        provider = provider_of(models[index])
+        group = [models[index]]
+        index += 1
+        while index < len(models) and provider_of(models[index]) == provider:
+            group.append(models[index])
+            index += 1
+        group = [m for m in group if m not in EXHAUSTED]
+        if not group or not has_key(provider):
+            continue
+        try:
+            if provider == "gemini":
+                return gemini_answer(prompt, cfg, group)
+            return compatible_answer(provider, prompt, cfg, group)
+        except RuntimeError as exc:  # this provider is unavailable right now; try the next one
+            problems.append(str(exc)[:300])
+            print(f"[warn] {exc}"[:400])
+    raise RuntimeError("no script model answered: " + "; ".join(problems[-4:]))
+
+
+def gemini_answer(prompt: str, cfg: dict, models: list[str]) -> tuple[dict, str]:
     payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
@@ -116,22 +195,118 @@ def gemini_json_from(prompt: str, cfg: dict, models: list[str] | None = None) ->
         raise ValueError("response was cut off at the output token limit; keep turns and study notes more concise")
     parts = candidates[0].get("content", {}).get("parts", [])
     # Thinking models may return their reasoning as separate "thought" parts; keep the answer only.
-    text = "".join(str(part.get("text", "")) for part in parts if not part.get("thought")).strip()
-    if not text:
-        raise ValueError("Gemini returned an empty response")
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    try:
-        result = json.loads(text)
-    except json.JSONDecodeError:
-        # Some models append text after the JSON object ("Extra data"); read the first object only.
-        start = text.find("{")
-        if start < 0:
-            raise
-        result, _ = json.JSONDecoder().raw_decode(text[start:])
-    if not isinstance(result, dict):
-        raise ValueError("Gemini response must be a JSON object")
-    return result, model
+    text = "".join(str(part.get("text", "")) for part in parts if not part.get("thought"))
+    return parse_json_text(text, model), model
+
+
+# --------------------------------------------------------------------------- OpenAI-compatible providers
+
+COMPATIBLE_ENDPOINTS = {
+    "mistral": "https://api.mistral.ai/v1/chat/completions",
+    "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+}
+OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models"
+# Resolved once per run: "openrouter:free" -> the best free model OpenRouter lists today.
+FREE_MODEL_CACHE: dict[str, dict] = {}
+
+
+def openrouter_free_model(cfg: dict) -> dict:
+    """Pick today's best ':free' model: free models rotate, so the id is looked up instead of hard-coded."""
+    if "pick" in FREE_MODEL_CACHE:
+        return FREE_MODEL_CACHE["pick"]
+    settings = cfg["provider"].get("openrouter", {})
+    preferred = [str(x).lower() for x in settings.get("preferred", [])]
+    minimum_context = int(settings.get("min_context", 32000))
+    response = requests.get(OPENROUTER_MODELS, timeout=(10, 60))
+    response.raise_for_status()
+    candidates = []
+    for item in response.json().get("data", []):
+        model_id = str(item.get("id", ""))
+        modalities = (item.get("architecture") or {}).get("output_modalities") or ["text"]
+        if not model_id.endswith(":free") or "text" not in modalities:
+            continue
+        if int(item.get("context_length") or 0) < minimum_context:
+            continue
+        rank = next((i for i, word in enumerate(preferred) if word in model_id.lower()), len(preferred))
+        limit = int((item.get("top_provider") or {}).get("max_completion_tokens") or 0)
+        candidates.append((rank, -int(item.get("context_length") or 0), model_id, limit))
+    if not candidates:
+        raise RuntimeError("OpenRouter lists no suitable free model today")
+    candidates.sort()
+    _, _, model_id, limit = candidates[0]
+    FREE_MODEL_CACHE["pick"] = {"id": model_id, "max_tokens": limit}
+    print(f"[script] OpenRouter free model today: {model_id}")
+    return FREE_MODEL_CACHE["pick"]
+
+
+def compatible_answer(provider: str, prompt: str, cfg: dict, models: list[str]) -> tuple[dict, str]:
+    """Chat-completions call for Mistral / OpenRouter. Returns (answer, 'provider:model')."""
+    api_key = os.getenv(PROVIDER_KEYS[provider], "").strip()
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if provider == "openrouter":
+        headers.update({"HTTP-Referer": "https://github.com/RyoSAKu610/journey-talk-radio", "X-Title": "Journey Talk"})
+    problems: list[str] = []
+    for model in models:
+        name = model.split(":", 1)[1]
+        max_tokens = int(cfg["episode"]["max_output_tokens"])
+        if provider == "openrouter" and name == "free":
+            try:
+                pick = openrouter_free_model(cfg)
+            except (requests.RequestException, RuntimeError, ValueError) as exc:
+                problems.append(f"{model}: {exc}")
+                continue
+            name = pick["id"]
+            if pick["max_tokens"]:
+                max_tokens = min(max_tokens, pick["max_tokens"])
+        body = {
+            "model": name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": cfg["episode"]["temperature"],
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        response = None
+        for attempt in range(1, HTTP_ATTEMPTS + 1):
+            try:
+                response = requests.post(COMPATIBLE_ENDPOINTS[provider], headers=headers, json=body, timeout=(20, 300))
+            except requests.RequestException as exc:
+                response = None
+                problems.append(f"{model}: {exc}")
+                time.sleep(10 * attempt)
+                continue
+            text = response.text
+            daily = response.status_code == 429 and re.search(r"per[- _]?day|daily|free-models-per-day|quota", text, re.I)
+            if daily or response.status_code == 402:
+                EXHAUSTED.add(model)
+                print(f"[warn] {model}: free quota used up (HTTP {response.status_code}); skipping it for the rest of this run")
+                break
+            if response.status_code in RETRYABLE_STATUS and attempt < HTTP_ATTEMPTS:
+                print(f"[warn] {model} HTTP {response.status_code}; retrying in {10 * attempt}s")
+                time.sleep(10 * attempt)
+                continue
+            break
+        if response is None or model in EXHAUSTED:
+            continue
+        if response.status_code in (401, 403):
+            problems.append(f"{model}: key rejected (HTTP {response.status_code})")
+            EXHAUSTED.update(m for m in models)
+            break
+        if response.status_code >= 400:
+            problems.append(f"{model}: HTTP {response.status_code} {response.text[:200]}")
+            continue
+        payload = response.json()
+        choices = payload.get("choices") or []
+        if not choices:
+            raise ValueError(f"{model} returned no choices: {json.dumps(payload)[:300]}")
+        if choices[0].get("finish_reason") == "length":
+            raise ValueError("response was cut off at the output token limit; keep turns and study notes more concise")
+        content = (choices[0].get("message") or {}).get("content") or ""
+        if isinstance(content, list):  # some providers return content parts
+            content = "".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+        label = f"{provider}:{name}"
+        MODEL_USED["name"] = label
+        return parse_json_text(str(content), label), label
+    raise RuntimeError(f"no {provider} model answered: " + "; ".join(problems[-3:]))
 
 
 def collect_news(cfg: dict) -> list[dict]:
@@ -196,7 +371,7 @@ Candidates:
         by_id = {x["id"]: x for x in news}
         return [by_id[x] for x in ids]
     except Exception as exc:
-        print(f"[warn] Gemini story selection failed; using RSS fallback: {exc}")
+        print(f"[warn] model story selection failed; using RSS fallback: {exc}")
         selected: list[dict] = []
         used_sources: set[str] = set()
         for item in news:
@@ -512,7 +687,14 @@ def contestant_orders(cfg: dict) -> list[list[str]]:
     if not models:
         return [last_resort_models(cfg)] if last_resort_models(cfg) else []
     count = max(1, min(int(cfg["episode"].get("parallel_models", 1)), len(models)))
-    return [models[i:] + models[:i] for i in range(count)]
+    # Contestants start on different providers first (Gemini, Mistral, OpenRouter...), so one provider's
+    # outage or style never decides a whole round; extra contestants take the next models in the list.
+    starts: list[str] = []
+    for model in models:
+        if provider_of(model) not in {provider_of(x) for x in starts}:
+            starts.append(model)
+    starts += [m for m in models if m not in starts]
+    return [[start, *[m for m in models if m != start]] for start in starts[:count]]
 
 
 def run_contestant(prompt: str, order: list[str], date: str, lang: dict, stories: list[dict], cfg: dict) -> dict:
@@ -574,7 +756,7 @@ def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prom
         if not content_errors:
             if contestant_orders(cfg) not in ([], orders):
                 continue  # quotas ran out during this round; the next round uses the models still available
-            raise RuntimeError(f"{lang['slug']}: no Gemini model answered ({results[0].get('error', '')[:300]})")
+            raise RuntimeError(f"{lang['slug']}: no script model answered ({results[0].get('error', '')[:300]})")
         # Length problems are the most common and the most actionable, so prefer them as feedback.
         feedback = next((e for e in content_errors if "duration" in e or "utterance count" in e), content_errors[0])
     if spoken_only is not None:
@@ -614,30 +796,164 @@ def write_markdown(episode: dict, path: Path) -> None:
     path.write_text("\n".join(rows), encoding="utf-8")
 
 
+# --------------------------------------------------------------------------- reviewed script bundles
+
+
+def bundle_episode(raw: dict, date: str, lang: dict, cfg: dict) -> dict:
+    """A reviewed script from incoming/DATE.json (docs/EPISODE_BUNDLE.md) in this pipeline's episode format.
+
+    The script is fixed, so only its structure is checked here; its length is judged on the rendered audio
+    (tts.bundle_audio_seconds) instead of a text estimate.
+    """
+    if str(raw.get("language", "")) != lang["code"]:
+        raise ValueError(f"language must be {lang['code']}")
+    utterances = raw.get("utterances")
+    if not isinstance(utterances, list) or len(utterances) < 20:
+        raise ValueError("utterances missing or too few")
+    allowed = {"ja-JP", lang["code"]}
+    cleaned: list[dict] = []
+    for index, line in enumerate(utterances):
+        if not isinstance(line, dict):
+            raise ValueError(f"utterance {index} is not an object")
+        speaker, language = str(line.get("speaker", "")), str(line.get("language", ""))
+        text = normalized_text(clean(str(line.get("text", ""))))
+        text = re.sub(r"[`*_#]+", "", text).strip()
+        if speaker not in {"MC_F", "MC_M"} or language not in allowed or not text:
+            raise ValueError(f"invalid speaker, language or text at utterance {index}")
+        if re.search(r"https?://|www\.", text, flags=re.I):
+            raise ValueError(f"spoken URL at utterance {index}")
+        item = {"speaker": speaker, "language": language, "text": text}
+        intent = str(line.get("intent", "")).strip()
+        if intent:
+            item["intent"] = intent
+        if language == lang["code"] and (line.get("slow") is True or intent == "review_slow"):
+            item["slow"] = True
+        cleaned.append(item)
+    if {u["speaker"] for u in cleaned} != {"MC_F", "MC_M"} or {u["language"] for u in cleaned} != allowed:
+        raise ValueError("both hosts and both languages must appear")
+    stories = [
+        {"source": clean_field(s.get("source"), 120), "title": clean_field(s.get("title"), 500), "url": str(s.get("url", ""))[:2000]}
+        for s in raw.get("stories") or []
+        if isinstance(s, dict) and s.get("title")
+    ]
+    title = clean_field(raw.get("title"), 160) or f"Journey Talk {lang['japanese_name']}"
+    return {
+        "episode_date": date,
+        "language": lang["code"],
+        "slug": lang["slug"],
+        "language_name": lang["name"],
+        "japanese_name": lang["japanese_name"],
+        "title": title,
+        "stories": stories,
+        "estimated_seconds": round(estimate_seconds(cleaned, cfg["episode"].get("speech_rates")), 2),
+        "utterances": cleaned,
+        "script_model": "bundle",
+        "source": "bundle",
+    }
+
+
+def enrichment_prompt(episode: dict, lang: dict, cfg: dict) -> str:
+    learning = cfg["learning"]
+    lines = [
+        {"i": index, "language": u["language"], "text": u["text"]}
+        for index, u in enumerate(episode["utterances"])
+    ]
+    return f"""
+These are the lines of a finished Journey Talk episode: a Japanese-navigated {lang['name']} ({lang['code']}) language-learning
+radio show for a Japanese listener around {cfg['episode'].get('learner_level', 'CEFR B1')}. Do not change the lines.
+Write the study materials shown next to the audio in the web player.
+
+- "translations": an object mapping the index (as a string) of EVERY {lang['code']} line to a natural Japanese translation.
+- "title_ja": a short Japanese title for the episode.
+- "summary_ja": two or three Japanese sentences on what the episode covers and what the listener will be able to say.
+- "vocabulary": {learning['vocabulary_min']} to {learning['vocabulary_max']} useful words or phrases that appear in the {lang['code']} lines.
+  Each item has "term", "reading" (pinyin with tone marks for Chinese, Revised Romanization for Korean, the word with a stress
+  mark for Russian, otherwise ""), "meaning_ja", "example" (a {lang['code']} line containing the term) and "example_ja".
+- "quiz": {learning['quiz_min']} to {learning['quiz_max']} listening-comprehension questions in Japanese about what the hosts said.
+  Each item has "question_ja", "choices" (three or four short Japanese options), "answer" (zero-based index) and "explanation_ja".
+
+Return JSON only: {{"title_ja":"...","summary_ja":"...","translations":{{"1":"..."}},"vocabulary":[...],"quiz":[...]}}
+
+Lines:
+{json.dumps(lines, ensure_ascii=False)}
+""".strip()
+
+
+def enrich_with_materials(episode: dict, lang: dict, cfg: dict) -> dict:
+    """Add translations, vocabulary and a quiz to a bundle script. Best effort: the audio never waits on it."""
+    if not text_models(cfg):
+        episode.update(empty_learning())
+        return episode
+    try:
+        raw, model = gemini_json_from(enrichment_prompt(episode, lang, cfg), cfg)
+        translations = raw.get("translations") if isinstance(raw.get("translations"), dict) else {}
+        for index, utterance in enumerate(episode["utterances"]):
+            if utterance["language"] == lang["code"]:
+                text = clean_field(translations.get(str(index)))
+                if text:
+                    utterance["ja"] = text
+        episode.update(validate_learning(raw, episode, cfg))
+        title_ja = clean_field(raw.get("title_ja"), 120)
+        if title_ja:
+            episode["title_ja"] = title_ja
+        episode["materials_model"] = model
+        print(f"[{lang['slug']}] study materials by {model}")
+    except Exception as exc:  # noqa: BLE001 - materials are optional for a reviewed script
+        # Translations that did arrive are kept; vocabulary and quiz need the full validation.
+        print(f"::warning::{lang['slug']} study materials skipped: {str(exc)[:300]}")
+        for key, value in empty_learning().items():
+            episode.setdefault(key, value)
+    return episode
+
+
+def load_bundle(path: Path, date: str) -> dict:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if str(data.get("date", "")) != date:
+        raise ValueError(f"bundle date {data.get('date')!r} does not match {date}")
+    episodes = data.get("episodes")
+    if not isinstance(episodes, list):
+        raise ValueError("bundle has no episodes list")
+    return {str(item.get("slug", "")): item for item in episodes if isinstance(item, dict)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"))
     parser.add_argument("--output-dir", type=Path, default=ROOT / "output" / "languages")
+    parser.add_argument("--bundle", type=Path, help="reviewed scripts (incoming/DATE.json) to use instead of writing new ones")
     args = parser.parse_args()
 
-    if not os.getenv("GEMINI_API_KEY", "").strip():
-        raise SystemExit("GEMINI_API_KEY is not configured")
     cfg = load_config()
-    news = collect_news(cfg)
-    selected = choose_shared_stories(cfg, news)
+    bundle = load_bundle(args.bundle, args.date) if args.bundle else None
+    if bundle is None and not any_script_provider():
+        raise SystemExit("No script source: add incoming/DATE.json or one of GEMINI_API_KEY / MISTRAL_API_KEY / OPENROUTER_API_KEY")
+    if bundle is None:
+        news = collect_news(cfg)
+        selected = choose_shared_stories(cfg, news)
+    else:
+        selected = []
     day = args.output_dir / args.date
     day.mkdir(parents=True, exist_ok=True)
 
     manifest = {
         "episode_date": args.date,
         "model": None,
+        "source": "bundle" if bundle is not None else "generated",
         "stories": [{"source": x["source"], "title": x["title"], "url": x["url"]} for x in selected],
         "episodes": [],
         "failed": [],
     }
     for lang in cfg["languages"]:
         try:
-            episode = generate_episode(args.date, lang, selected, cfg)
+            if bundle is not None:
+                if lang["slug"] not in bundle:
+                    raise ValueError("not in the bundle")
+                episode = enrich_with_materials(bundle_episode(bundle[lang["slug"]], args.date, lang, cfg), lang, cfg)
+                for story in episode["stories"]:
+                    if story not in manifest["stories"]:
+                        manifest["stories"].append(story)
+            else:
+                episode = generate_episode(args.date, lang, selected, cfg)
         except Exception as exc:
             # One language failing should not cost learners of the other four their daily episode.
             print(f"::warning::{lang['slug']} edition skipped: {exc}")
@@ -655,6 +971,7 @@ def main() -> int:
                 "json": json_path.name,
                 "markdown": md_path.name,
                 "script_model": episode.get("script_model"),
+                "source": episode.get("source", "generated"),
             }
         )
         print(f"[script] {lang['japanese_name']}: {json_path}")

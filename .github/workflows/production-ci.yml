@@ -1,0 +1,61 @@
+name: Journey Talk CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "cloud_languages.yaml"
+      - "incoming/**"
+      - "scripts/**"
+      - "tests/**"
+      - "docs/assets/**"
+      - "docs/index.html"
+      - "docs/sw.js"
+      - ".github/workflows/**"
+      - "requirements.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install --requirement requirements.txt
+      - name: Compile
+        run: python -m compileall -q scripts
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Reviewed script bundles load
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          import build_language_episodes as build
+          cfg = build.load_config()
+          for path in sorted(Path("incoming").glob("*.json")):
+              bundle = build.load_bundle(path, path.stem)
+              for lang in cfg["languages"]:
+                  episode = build.bundle_episode(bundle[lang["slug"]], path.stem, lang, cfg)
+                  print(f"{path.stem} {lang['slug']}: {len(episode['utterances'])} lines, ~{episode['estimated_seconds'] / 60:.1f} min")
+          PY
+      - name: Paid engines stay out of the default order
+        run: |
+          python - <<'PY'
+          import yaml
+          cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))
+          assert "openai" not in cfg["tts"]["order"]
+          assert all(m.endswith("-free") or "free" in m for m in cfg["tts"]["fish"]["models"]), "only Fish's free model"
+          print("free-only defaults: PASS")
+          PY

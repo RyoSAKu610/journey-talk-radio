@@ -14,7 +14,19 @@ import yaml
 from pydub import AudioSegment
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from tts_engines import CosyVoiceModalTTS, GeminiEpisodeTTS, GoogleCloudTTS, OpenAITTS, TTSError, estimate_word_timings, slow_down, tempo_from_rate  # noqa: E402
+from tts_engines import (  # noqa: E402
+    CosyVoiceModalTTS,
+    FishAudioTTS,
+    GeminiEpisodeTTS,
+    GoogleCloudTTS,
+    KaggleCosyVoiceTTS,
+    LocalCosyVoiceTTS,
+    OpenAITTS,
+    TTSError,
+    estimate_word_timings,
+    slow_down,
+    tempo_from_rate,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
@@ -64,11 +76,10 @@ async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> tuple[lis
     return paths, word_timings
 
 
-def synthesize_with(engine, cfg: dict, utterances: list[dict], work: Path) -> tuple[list[Path], list[list[list]]]:
-    """Render every line with one cloud engine; slow lines are time-stretched, word timings estimated."""
+def clips_to_files(engine, cfg: dict, utterances: list[dict], clips: list, work: Path) -> tuple[list[Path], list[list[list]]]:
+    """Write one engine's clips as WAV files; slow lines are time-stretched unless the engine set the pace itself."""
     slow_tempo = tempo_from_rate(str(cfg.get("learning", {}).get("slow_rate", "-25%")))
     learner_tempo = float(cfg["tts"].get("target_language_tempo", 1.0))
-    clips = engine.render(utterances)
     if len(clips) != len(utterances):
         raise TTSError(f"{engine.name}: {len(clips)} clips for {len(utterances)} lines")
     paths: list[Path] = []
@@ -89,17 +100,33 @@ def synthesize_with(engine, cfg: dict, utterances: list[dict], work: Path) -> tu
     return paths, word_timings
 
 
+def synthesize_with(engine, cfg: dict, utterances: list[dict], work: Path) -> tuple[list[Path], list[list[list]]]:
+    """Render every line of one episode with one cloud engine."""
+    return clips_to_files(engine, cfg, utterances, engine.render(utterances), work)
+
+
 def tts_order(cfg: dict) -> list[str]:
     override = os.getenv("TTS_ORDER", "").strip()
     order = [x.strip() for x in override.split(",") if x.strip()] if override else list(cfg["tts"]["order"])
     return order if "edge" in order else [*order, "edge"]  # Edge needs no key: always the last resort
 
 
+ENGINES = {
+    "fish": FishAudioTTS,
+    "gemini": GeminiEpisodeTTS,
+    "kaggle": KaggleCosyVoiceTTS,
+    "cosyvoice": CosyVoiceModalTTS,
+    "google_cloud": GoogleCloudTTS,
+    "cosyvoice_local": LocalCosyVoiceTTS,
+    "openai": OpenAITTS,
+}
+
+
 def open_engines(cfg: dict) -> list:
     """Cloud engines in priority order, skipping those without credentials."""
     engines = []
     for name in tts_order(cfg):
-        factory = {"gemini": GeminiEpisodeTTS, "cosyvoice": CosyVoiceModalTTS, "google_cloud": GoogleCloudTTS, "openai": OpenAITTS}.get(name)
+        factory = ENGINES.get(name)
         if factory is None:
             continue
         try:
@@ -184,7 +211,7 @@ def probe_duration(path: Path) -> float:
 
 
 def render_audio(cfg: dict, utterances: list[dict], work: Path, engines: list) -> tuple[list[Path], list, str]:
-    """Try each engine in order (Gemini, then OpenAI, then Edge); one episode never mixes voices."""
+    """Try each engine in order, then Edge; one episode never mixes voices."""
     for engine in engines:
         try:
             paths, words = synthesize_with(engine, cfg, utterances, work)
@@ -197,6 +224,58 @@ def render_audio(cfg: dict, utterances: list[dict], work: Path, engines: list) -
     return paths, words, "edge"
 
 
+def engine_clips(engine, pending: dict[str, list[dict]]) -> dict:
+    """{slug: clips or TTSError} for the episodes one engine could render. Batch engines get them all at once."""
+    if getattr(engine, "batch", False):
+        try:
+            return dict(engine.render_many(pending))
+        except TTSError as exc:
+            print(f"::warning::{engine.name} TTS failed ({exc}); trying the next engine")
+            return {}
+    results: dict = {}
+    for slug, utterances in pending.items():
+        try:
+            results[slug] = engine.render(utterances)
+        except TTSError as exc:
+            print(f"::warning::{engine.name} TTS failed for {slug} ({exc}); trying the next engine")
+    return results
+
+
+def finish_episode(cfg: dict, episode: dict, output: Path, paths: list[Path], word_timings: list, engine: str, window: tuple[float, float]) -> dict:
+    """Assemble, normalise and check one episode; raises when the result is unusable."""
+    minimum, maximum = window
+    audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
+    offline = output.with_name(offline_name(output.name))
+    export_normalized(audio, output, offline)
+    duration = probe_duration(output)
+    if not minimum <= duration <= maximum:
+        for path in (output, offline):
+            path.unlink(missing_ok=True)
+        raise RuntimeError(f"duration {duration:.2f}s outside {minimum:.0f}..{maximum:.0f}s")
+    return {
+        "slug": episode["slug"],
+        "language": episode["language"],
+        "japanese_name": episode["japanese_name"],
+        "title": episode["title"],
+        "audio": output.name,
+        "duration_seconds": round(duration, 3),
+        "bytes": output.stat().st_size,
+        "offline_audio": offline.name,
+        "offline_bytes": offline.stat().st_size,
+        "tts": engine,
+        "words_estimated": engine != "edge",
+        "timeline": timeline,
+        "words": words,
+    }
+
+
+def audio_window(cfg: dict, episode: dict) -> tuple[float, float]:
+    episode_cfg = cfg["episode"]
+    key = "bundle_audio_seconds" if episode.get("source") == "bundle" else "audio_seconds"
+    low, high = episode_cfg.get(key) or episode_cfg.get("audio_seconds") or [episode_cfg["minimum_seconds"], episode_cfg["maximum_seconds"]]
+    return float(low), float(high)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episode-dir", type=Path, required=True)
@@ -206,50 +285,50 @@ def main() -> int:
     cfg = load_config()
     manifest = json.loads((args.episode_dir / "manifest.json").read_text(encoding="utf-8"))
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    media = {"episode_date": manifest["episode_date"], "episodes": [], "failed": []}
-    minimum, maximum = (float(x) for x in cfg["episode"].get("audio_seconds", [cfg["episode"]["minimum_seconds"], cfg["episode"]["maximum_seconds"]]))
+    date = manifest["episode_date"]
+    media = {"episode_date": date, "episodes": [], "failed": []}
+    episodes = {
+        item["slug"]: json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
+        for item in manifest["episodes"]
+    }
+    finished: dict[str, dict] = {}
+    errors: dict[str, str] = {}
 
-    engines = open_engines(cfg)
+    def output_for(slug: str) -> Path:
+        return args.output_dir / f"journey-talk-{date}-{slug}.mp3"
 
-    for item in manifest["episodes"]:
-        episode = json.loads((args.episode_dir / item["json"]).read_text(encoding="utf-8"))
-        slug = item["slug"]
-        output = args.output_dir / f"journey-talk-{manifest['episode_date']}-{slug}.mp3"
+    # Engine by engine, each one gets every episode still without audio. An episode whose take fails the
+    # checks (e.g. duration) also goes on to the next engine.
+    for engine in open_engines(cfg):
+        pending = {slug: e["utterances"] for slug, e in episodes.items() if slug not in finished}
+        if not pending:
+            break
+        for slug, clips in engine_clips(engine, pending).items():
+            episode = episodes[slug]
+            try:
+                with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
+                    paths, timings = clips_to_files(engine, cfg, episode["utterances"], clips, Path(temp))
+                    label = f"{engine.name}:{engine.model_in_use}"
+                    finished[slug] = finish_episode(cfg, episode, output_for(slug), paths, timings, label, audio_window(cfg, episode))
+                print(f"[audio] {slug}: {finished[slug]['duration_seconds']:.2f}s via {label}")
+            except Exception as exc:  # noqa: BLE001 - the next engine gets another chance
+                errors[slug] = f"{engine.name}: {exc}"
+                print(f"::warning::{slug}: {engine.name} audio rejected ({exc}); trying the next engine")
+
+    # Edge TTS, the last resort, for whatever is left.
+    for slug, episode in episodes.items():
+        if slug in finished:
+            continue
         try:
             with tempfile.TemporaryDirectory(prefix="journey-talk-tts-") as temp:
-                paths, word_timings, engine = render_audio(cfg, episode["utterances"], Path(temp), engines)
-                audio, timeline, words = assemble(paths, episode["utterances"], cfg, word_timings)
-                offline = output.with_name(offline_name(output.name))
-                export_normalized(audio, output, offline)
-            duration = probe_duration(output)
-            if not minimum <= duration <= maximum:
-                raise RuntimeError(f"duration {duration:.2f}s outside {minimum:.0f}..{maximum:.0f}s")
-        except Exception as exc:
-            # One language's audio failing must not cost the other languages their episode.
+                paths, timings = asyncio.run(synthesize(cfg, episode["utterances"], Path(temp)))
+                finished[slug] = finish_episode(cfg, episode, output_for(slug), paths, timings, "edge", audio_window(cfg, episode))
+            print(f"[audio] {slug}: {finished[slug]['duration_seconds']:.2f}s via edge")
+        except Exception as exc:  # noqa: BLE001 - one language failing must not cost the others
             print(f"::warning::{slug} audio skipped: {exc}")
-            media["failed"].append({"slug": slug, "error": str(exc)[:500]})
-            for path in (output, output.with_name(offline_name(output.name))):
-                path.unlink(missing_ok=True)
-            continue
-        media["episodes"].append(
-            {
-                "slug": slug,
-                "language": episode["language"],
-                "japanese_name": episode["japanese_name"],
-                "title": episode["title"],
-                "audio": output.name,
-                "duration_seconds": round(duration, 3),
-                "bytes": output.stat().st_size,
-                "offline_audio": offline.name,
-                "offline_bytes": offline.stat().st_size,
-                "tts": engine,
-                "words_estimated": engine != "edge",
-                "timeline": timeline,
-                "words": words,
-            }
-        )
-        print(f"[audio] {slug}: {duration:.2f}s via {engine}")
+            media["failed"].append({"slug": slug, "error": (errors.get(slug, "") + " | edge: " + str(exc))[:500]})
 
+    media["episodes"] = [finished[slug] for slug in episodes if slug in finished]
     (args.output_dir / "media-manifest.json").write_text(
         json.dumps(media, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
