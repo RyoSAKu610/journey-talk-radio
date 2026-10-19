@@ -231,47 +231,139 @@ python scripts/youtube_oauth_setup.py client_secrets.json
 SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要です。登録後の新エピソードは、Actionsが更新する同じRSSから自動取得されます。
 
 
-## 6言語 × 各約10分のクラウド版
+## 5言語 × 各10〜15分のクラウド版（主系統）
 
-新しい `.github/workflows/daily-multilang.yml` が日次の主系統です。英語・ドイツ語・スペイン語・ロシア語・中国語・韓国語をそれぞれ独立した約10分番組として生成します。
+`.github/workflows/daily-multilang.yml` が日次の主系統です（毎日07:00 JST）。ドイツ語・スペイン語・ロシア語・中国語・韓国語を、それぞれ独立した10〜15分の番組として生成します。
 
-各番組は3件ずつ別の記事を割り当て、対象言語の会話と日本語解説を組み合わせます。6言語合計で18件の異なる記事レコードを使い、音声はEdge TTS、実行基盤はGitHub Actionsです。
+```text
+台本: incoming/YYYY-MM-DD.json（レビュー済み台本）があればそれを使用
+      なければ RSS 3媒体 → 台本アリーナ（Gemini・Mistral・OpenRouter無料モデルが同時に書き、検証を通った最良の台本を採用）
+  → 学習教材（日本語訳・単語・クイズ）
+  → 音声: Fish Audio → Gemini TTS → Kaggle(CosyVoice) → Modal(CosyVoice) → Google Cloud → Actions CPU(CosyVoice) → Edge
+  → 1本ずつQA（全デコード・無音・音量・Whisper照合）→ 合格した回だけ公開
+  → GitHub Release（MP3・台本）＋ GitHub Pages（学習プレーヤー・RSS）
+```
 
-### LLMルーティング
+### かんたん設定ガイド（すべて無料）
 
-優先順は次の通りです。
+必要なのは「各サービスで登録してキーをコピー → GitHub に貼る」だけです。貼る場所はすべて同じです：
+**GitHub のこのリポジトリ → Settings → Secrets and variables → Actions → New repository secret**（Name と Secret を入れて Add secret）。
+どれも任意で、登録しなかったものは自動で飛ばされます（台本は `incoming/` か下の①〜③のどれか1つ、音声は何も無くても Edge で必ず作れます）。
 
-1. Venice API — 推奨。既定モデルは `z-ai-glm-5-3-flash`
-2. Featherless API — 任意のフォールバック
-3. Abliteration API — 任意のフォールバック
+**台本を書くAI（台本アリーナ）**
 
-GitHub ActionsのRepository secretに最低1つのAPIキーを登録してください。推奨は `VENICE_API_KEY` です。
+| | どこで | やること | GitHub に貼る Secret |
+|---|---|---|---|
+| ① Gemini | https://aistudio.google.com/apikey | 「Create API key」→ キーをコピー | `GEMINI_API_KEY` |
+| ② Mistral | https://console.mistral.ai | 登録（メール＋電話番号の確認。カード不要）→ **Experiment（無料）プラン**を選ぶ → API Keys → Create new key | `MISTRAL_API_KEY` |
+| ③ OpenRouter | https://openrouter.ai | 登録 → Keys → Create Key（`:free` の無料モデルだけを使うので課金なし。1日50回まで） | `OPENROUTER_API_KEY` |
 
-任意フォールバック:
-- `FEATHERLESS_API_KEY`
-- Repository variable `FEATHERLESS_MODEL`（省略時は設定ファイル既定値）
-- `ABLITERATION_API_KEY`
+**声（音声合成）**
 
-旧 `daily-radio.yml` は既存成果物との互換用として残し、日次scheduleは停止して手動実行専用にしています。
+| | どこで | やること | GitHub に貼る |
+|---|---|---|---|
+| ④ Fish Audio（11/30まで無料） | https://fish.audio | 登録 → 右上のアカウント → **API Keys** → Create → キーをコピー | Secret `FISH_API_KEY` |
+| ⑤ Kaggle（GPU 週約30時間） | https://www.kaggle.com | 登録 → **Settings → Phone verification**（電話番号の確認。カーネルからのインターネット利用に必須）→ 同じ Settings の **API → Generate New Token** → 表示されたトークンをコピー | Secret `KAGGLE_API_TOKEN` と、Secret か Variable に `KAGGLE_USERNAME`（Kaggle のユーザー名） |
+| ⑥ Modal（月30ドル分） | https://modal.com | 「Sign up」→ GitHub でログイン → **Settings → API Tokens → New Token** → 表示される2つの値をコピー | `MODAL_TOKEN_ID`（`ak-`）と `MODAL_TOKEN_SECRET`（`as-`） |
+| ⑦ Google Cloud TTS | ①のキーのプロジェクトで「Cloud Text-to-Speech API」を有効化 | 課金アカウントの紐付けを求められたら紐付け（無料枠内に自動で制御） | 追加不要（①のキー） |
+| ⑧ Actions の CPU | 登録不要 | このリポジトリは公開なので GitHub Actions の標準ランナーは無料・無制限。何もしなくても使われます | なし |
+
+### 台本アリーナ（Gemini・Mistral・OpenRouter）
+
+`cloud_languages.yaml` の `provider.models` に並んだモデルが、毎ラウンド**提供元の違う3者で同時に**台本を書き、検証（尺・行数・言語比率・教材）を通った中から目標の長さに最も近いものを採用します。提供元ごとに無料枠が別なので、Gemini の「1日約20回」を使い切っても Mistral と OpenRouter で続けられます。
+
+- `mistral:mistral-medium-latest` など: Mistral の無料 Experiment プラン（送った内容は Mistral の学習に使われることがあります）
+- `openrouter:free`: その日 OpenRouter に並んでいる `:free` モデルから、`provider.openrouter.preferred` の順（deepseek → qwen3 → …）で自動選択。無料モデルは入れ替わるので固定しません
+- キーのない提供元、その日の上限に達したモデルは自動で飛ばします
+
+### レビュー済み台本（incoming/）
+
+`incoming/YYYY-MM-DD.json`（形式は `docs/EPISODE_BUNDLE.md`）があれば、その日の台本はAIに書かせずにそれを使います。話者・言語・URLなどの構造だけを確認し、日本語訳・単語・クイズは台本アリーナのモデルが後付けします（キーが無ければ教材なしで公開）。台本が固定なので、長さは音声で判定し、5〜18分（`episode.bundle_audio_seconds`）を受け入れます。
+
+**過去の日をまとめて作る**: Actions → Journey Talk Cloud Daily → Run workflow → `dates` に `2026-10-07,2026-10-08` のように入力。日付ごとに順番に作って公開します（過去の日は `incoming/` の台本がある日だけ）。main 以外のブランチで実行した場合は公開せず、MP3 を実行結果の Artifacts に残すだけです（試聴用）。
+
+### 音声合成（TTS）
+
+`tts.order`（既定 `[fish, gemini, kaggle, cosyvoice, google_cloud, cosyvoice_local, edge]`）の順に、**まだ音声が無い回をまとめて**次のエンジンに渡します。1つの回で声が混ざることはなく、仕上がりの長さが範囲外だった回も次のエンジンでやり直します。Repository variable `TTS_ORDER` で順番を変えられます。既定の順番は無料のものだけです（有料の GPT は `TTS_ORDER` に自分で書いた場合だけ）。
+
+1. **Fish Audio S2.1 Pro**（`FISH_API_KEY`）: 無料API用モデル `s2.1-pro-free`（2026-06-23 の発表で 11/30 まで無料・公正利用の範囲で無制限・品質保証なし・送信内容は改善に使われることあり）。1行ずつ3並列で合成し、ミナとレンの声は `assets/voices/` のお手本から複製、学習用の話速もAPIで指定します。`tts.fish.available_until` を過ぎると自動で使わなくなり、402（支払いが必要）が返ればその日は止めるので課金されません。延長されたら日付を書き換えるだけで続けられます。
+2. **Gemini TTS**（`GEMINI_API_KEY`）: 1エピソードを1回の2話者リクエストで合成し、`[long pause]` の間で行ごとに切り分けます（無料枠は1モデル1日約10回）。
+3. **Kaggle の無料GPU で CosyVoice 3**（`KAGGLE_USERNAME` + `KAGGLE_API_TOKEN`）: その日の未完成の回を**1回の非公開カーネル実行**（T4 GPU）でまとめて合成します。`kaggle kernels push` で起動して完了を待ち、結果を取り込みます。カーネルは kaggle.com/code/<ユーザー名>/journey-talk-tts に見えます。週約30時間の枠を使い切ると失敗して次へ回ります。
+4. **Modal の CosyVoice 3**（`MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`）: 月30ドルの無料クレジット内で1回1呼び出し。
+5. **Google Cloud TTS — Chirp 3: HD**（月100万文字の無料枠、使用量を `state/` に記録して95万文字で止める）。
+6. **Actions の CPU で CosyVoice 3**: アカウント不要・回数無制限。初回だけ Python 3.10 の仮想環境にライブラリとモデルを入れ（モデルは Actions のキャッシュに保存）、200分（`tts.cosyvoice_local.max_minutes`）で打ち切って、間に合わなかった回は次へ回します。CPU の速度は未実測なので、ログの `RTF`（1秒の音声に何秒かかったか）を見て調整してください。
+7. **Edge TTS**: キー不要の最後の砦。
+
+- Kaggle・Modal・Actions CPU は同じ `scripts/cosyvoice_core.py` / `cosyvoice_worker.py` を使い、CosyVoice のソースはコミット固定です。声は Fish と同じお手本から複製するので、どの段で作っても同じ2人に聞こえます。
+- 学習言語の行は0.85倍速、🐢の行は0.75倍速。Fish・CosyVoice・Cloud TTS は話速を直接指定し、Gemini と GPT は合成後に伸ばします。
+- クラウドの声は単語ごとのタイミングを返さないため、カラオケ表示の単語位置は行内で推定します。
+
+### 品質チェックと公開
+
+QA は1本ずつ合否を出します（全デコード、3秒超の無音、平均音量・ピーク、Whisper 照合）。**合格した回だけ**を Release・RSS・プレーヤーに載せ、不合格の回は警告とレポート（`qa-report.json`）に残します。`docs/health.json` に最終公開日と各回のエンジンを書き出します。Podcast 登録用に Repository variable `PODCAST_AUTHOR` / `PODCAST_EMAIL` を入れると RSS に所有者情報が入ります。
+
+### 学習体験
+
+各エピソードは音声に加えて、学習用の教材を生成します。
+
+- **日本語訳**: 対象言語のすべての発話に訳を付与
+- **単語・表現**: 5〜10個。中国語はピンイン、韓国語はローマ字、ロシア語はアクセント記号付きの読み
+- **リスニングクイズ**: 3〜5問。正解位置は決定的にシャッフル
+- **ゆっくり復唱**: 復習パートの重要文を-25%速度で再読み上げし、続けて真似するための間を挿入
+- **固定ホスト**: ミナ（MC_F）とレン（MC_M）。名前は `cloud_languages.yaml` の `hosts` で変更可
+- **学習者レベル**: `episode.learner_level`（既定 `CEFR B1`）で語彙と文の難しさを調整
+
+教材の検証に3回とも失敗した場合でも、音声台本として有効なら教材なしで公開します。1言語の生成に失敗しても、他の言語は公開されます（失敗は `manifest.json` の `failed` とActionsの警告に記録）。
+
+### Webプレーヤー（GitHub Pages）
+
+`https://<owner>.github.io/<repo>/` で、スマホ向けの学習プレーヤーが使えます。
+
+- 音声と同期するスクリプト（再生中の文をハイライト、タップでその文へ移動）
+- **カラオケ表示**: Edge TTS の WordBoundary から、いま発音している単語をハイライト
+- **🔁 1文リピート**（シャドーイング用）、前後の文へ移動、再生速度 0.75〜1.25×
+- **🎤 発音チェック**: ブラウザの音声認識（Web Speech API）で読み上げを聞き取り、お手本と比較して点数と聞き取れなかった語を表示（Chrome / Edge / Safari。非対応ブラウザではボタン非表示）
+- **ブラインドモード**: 対象言語の文をぼかし、聴き終えた文から表示
+- 単語帳（間隔反復: 1→3→7→14→30日）、Anki用TSV書き出し
+- クイズ、聴了記録、連続学習日数（ブラウザのlocalStorageに保存）
+- **⬇ オフライン保存（PWA）**: 公開から3日以内の回を端末に保存し、電波がなくても同期スクリプト・シーク・1文リピートつきで再生。ホーム画面に追加してアプリとして使用可
+- **🔄 端末間の引き継ぎ**: 学習記録を引き継ぎリンクかファイルで別端末へ移して統合（サーバー不要。データはURLの `#` 以降に入り送信されない）
+- キーボード操作（Space / ← → / R）とロック画面の操作（Media Session）
+
+### 週末まとめ回
+
+日曜日（日本時間）は、各言語でその週に出た単語・表現だけを使った復習回（`<slug>-weekly`）も生成します。新しい場面での使い方、「〇〇って何て言う？」の練習、🐢ゆっくり復唱で構成されます。手動実行時は `weekly_review` を有効にすると任意の日に作れます。表現が少ない週や生成に失敗した言語はスキップし、通常回の公開は止めません。
+
+### オフライン用音声とカバー画像
+
+- render は192kbpsの本編に加えて、64kbpsモノラルの軽量版（`*.offline.mp3`）を同じタイムラインで出力します。軽量版もReleaseに置かれ、デプロイ時に直近3日分だけをPagesへ配置します（gitにはコミットしません）。Release上のMP3はCORS非対応で、キャッシュしてもシークできないため、同一オリジンの軽量版を使います。
+- カバー画像（3000×3000）とアプリアイコンは `scripts/make_covers.py` で生成し、`docs/covers/`・`docs/icons/` にコミット済みです。デザインや言語を変えたときだけ再生成してください:
+  `python scripts/make_covers.py --font /path/to/NotoSansCJK.ttc`
 
 ### 毎日の成果物
 
-`daily-multilang.yml` は、各言語について次を作ります。
-
 ```text
-output/languages/YYYY-MM-DD/en.json
-output/languages/YYYY-MM-DD/de.json
-output/languages/YYYY-MM-DD/es.json
-output/languages/YYYY-MM-DD/ru.json
-output/languages/YYYY-MM-DD/zh.json
-output/languages/YYYY-MM-DD/ko.json
+output/languages/YYYY-MM-DD/{de,es,ru,zh,ko}.json   台本＋教材（正本）
+output/languages/YYYY-MM-DD/{slug}.md               訳・単語表・クイズ付きの台本
+build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-{slug}.mp3
+build/languages/YYYY-MM-DD/media-manifest.json      各発話の開始・終了秒（timeline）を含む
 
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-en.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-de.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-es.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ru.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-zh.mp3
-build/languages/YYYY-MM-DD/journey-talk-YYYY-MM-DD-ko.mp3
+docs/episodes.json                                  エピソード一覧
+docs/episodes/YYYY-MM-DD/{slug}.json                プレーヤー用データ（同期スクリプト・単語・クイズ）
+docs/episodes/YYYY-MM-DD/{slug}.vtt                 WebVTT字幕（podcast:transcript）
+docs/feed.xml                                       全言語のPodcast RSS
+docs/feeds/{slug}.xml                               言語別のPodcast RSS（カバー画像つき）
+docs/offline/YYYY-MM-DD/*.offline.mp3               オフライン保存用（デプロイ時のみ配置）
 ```
 
-定期実行では6本のMP3を同日のGitHub Releaseへ公開します。
+Podcastアプリでは、学びたい言語の `feeds/{slug}.xml` だけを購読できます。各エピソードの説明欄には要約・今日の表現・学習ページへのリンクが入り、対応アプリでは字幕（transcript）も表示されます。
+
+### テスト
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+台本・教材の検証、台本アリーナ（Gemini・Mistral・OpenRouter）、レビュー済み台本の取り込み、Fish Audio・Kaggle・Actions CPU の各エンジン（通信はモック）、1本ずつのQAと合格分だけの公開、週末まとめ回、単語タイミング、オフライン用音声、WebVTT、言語別RSSを検査します。
+
+旧 `daily-radio.yml`（固定カタログ版・1本の多言語MP3）は別系統として残っています。

@@ -1,27 +1,18 @@
-name: Journey Talk Production CI
+name: Journey Talk CI
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - "voice_profiles.yaml"
-      - "scripts/voice_director.py"
-      - "scripts/prepare_episode_bundle.py"
-      - "scripts/voice_healthcheck.py"
-      - "scripts/render_language_episodes.py"
-      - "scripts/qa_language_episodes.py"
-      - "scripts/publish_multilang_site.py"
-      - "tests/test_voice_director_v2.py"
-      - ".github/workflows/daily-multilang.yml"
-      - ".github/workflows/production-ci.yml"
-  push:
-    branches:
-      - "prod/**"
-    paths:
-      - "voice_profiles.yaml"
+      - "cloud_languages.yaml"
+      - "incoming/**"
       - "scripts/**"
       - "tests/**"
+      - "docs/assets/**"
+      - "docs/index.html"
+      - "docs/sw.js"
       - ".github/workflows/**"
+      - "requirements.txt"
 
 permissions:
   contents: read
@@ -29,42 +20,42 @@ permissions:
 jobs:
   static-and-unit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install test dependencies
-        run: pip install PyYAML==6.0.2 pydub==0.25.1 edge-tts==7.2.3 faster-whisper==1.2.0
-      - name: Compile production code
+      - name: Install dependencies
         run: |
-          python -m py_compile \
-            scripts/voice_director.py \
-            scripts/prepare_episode_bundle.py \
-            scripts/voice_healthcheck.py \
-            scripts/render_language_episodes.py \
-            scripts/qa_language_episodes.py \
-            scripts/publish_multilang_site.py
-      - name: Run Voice Director unit tests
-        run: python -m unittest tests.test_voice_director_v2 -v
-      - name: Validate profile structure
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install --requirement requirements.txt
+      - name: Compile
+        run: python -m compileall -q scripts
+      - name: Unit tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Reviewed script bundles load
+        run: |
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts")
+          import build_language_episodes as build
+          cfg = build.load_config()
+          for path in sorted(Path("incoming").glob("*.json")):
+              bundle = build.load_bundle(path, path.stem)
+              for lang in cfg["languages"]:
+                  episode = build.bundle_episode(bundle[lang["slug"]], path.stem, lang, cfg)
+                  print(f"{path.stem} {lang['slug']}: {len(episode['utterances'])} lines, ~{episode['estimated_seconds'] / 60:.1f} min")
+          PY
+      - name: Paid engines stay out of the default order
         run: |
           python - <<'PY'
           import yaml
-          cfg = yaml.safe_load(open('voice_profiles.yaml', encoding='utf-8'))
-          assert cfg['version'] == 2
-          assert set(cfg['languages']) == {'ja-JP','de-DE','es-ES','ru-RU','zh-CN','ko-KR'}
-          assert cfg['languages']['zh-CN']['pitch_adjustment_allowed'] is False
-          assert cfg['program']['target_min_seconds'] == 600
-          assert cfg['program']['target_max_seconds'] == 900
-          print('profile structure: PASS')
+          cfg = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))
+          assert "openai" not in cfg["tts"]["order"]
+          assert all(m.endswith("-free") or "free" in m for m in cfg["tts"]["fish"]["models"]), "only Fish's free model"
+          print("free-only defaults: PASS")
           PY
-      - name: Reject accidental Gemini dependency in production workflow
-        run: |
-          if grep -qi "GEMINI_API_KEY\|generativelanguage.googleapis.com" .github/workflows/daily-multilang.yml; then
-            echo "Production workflow must not depend on Gemini/API billing." >&2
-            exit 1
-          fi
-          echo "no paid-API production dependency: PASS"

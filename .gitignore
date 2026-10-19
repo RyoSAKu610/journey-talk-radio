@@ -5,3 +5,4 @@ __pycache__/
 build/
 output/
 client_secrets.json
+docs/offline/

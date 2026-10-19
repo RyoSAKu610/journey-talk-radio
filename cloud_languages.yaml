@@ -1,17 +1,160 @@
 provider:
-  model: "gemini-2.5-flash"
+  # Script-writing models. Bare names are Gemini models; "mistral:" and "openrouter:" models use those providers.
+  # Each provider (and each Gemini model) has its own free quota, and a provider without its key is skipped:
+  #   GEMINI_API_KEY (Google AI Studio), MISTRAL_API_KEY (Mistral "Experiment" plan, free),
+  #   OPENROUTER_API_KEY ("openrouter:free" = the best free model OpenRouter lists that day).
+  # Every contest round starts one contestant on each provider; GEMINI_MODEL overrides the first Gemini model.
+  models:
+    - "gemini-3.8-flash"
+    - "mistral:mistral-medium-latest"
+    - "openrouter:free"
+    - "gemini-3.7-flash"
+    - "gemini-3.6-flash"
+    - "mistral:mistral-large-latest"
+    - "gemini-3.5-flash"
+  # flash-lite writes far shorter scripts (25-40 turns), so it only steps in when every model above is out.
+  last_resort_models: ["gemini-3.1-flash-lite"]
+  openrouter:
+    # Free model ids rotate, so "openrouter:free" picks one at run time: the first match in this list wins,
+    # then the largest context window. Only ":free" models are ever used (50 free requests a day).
+    preferred: ["deepseek", "qwen3", "kimi", "glm", "gpt-oss", "llama-4", "gemma"]
+    min_context: 32000
 
 episode:
   minimum_seconds: 600
   maximum_seconds: 900
-  minimum_utterances: 44
-  maximum_utterances: 68
+  minimum_utterances: 50
+  maximum_utterances: 80
   temperature: 0.35
-  max_output_tokens: 8192
+  max_output_tokens: 32768
   stories: 3
+  generation_attempts: 3
+  # Each round asks this many models in parallel (each has its own free-tier quota) and keeps the best
+  # valid script, so one overloaded or terse model no longer costs the episode.
+  parallel_models: 3
+  learner_level: "CEFR B1"
+  # Finished audio accepted by the renderer. The script is sized for 600-900 s with Gemini; the fallback
+  # engines speak at a different pace, so the audio check is wider than the script contract.
+  audio_seconds: [540, 1080]
+  # Reviewed scripts from incoming/DATE.json are rendered as written, so their audio is accepted from 5 minutes.
+  bundle_audio_seconds: [300, 1080]
+  # Spoken characters per second (spaces ignored for ja/zh/ko), measured on Gemini 3.8 Flash TTS after
+  # tts.target_language_tempo. Used to size scripts. ja/es/ru/zh come from full episodes (2026-10-01/02);
+  # de/ko are not measured yet: refine them from real runs (render logs each episode's duration).
+  speech_rates:
+    ja-JP: 7.5
+    es-ES: 15.8
+    de-DE: 16.0
+    ru-RU: 13.5
+    zh-CN: 4.6
+    ko-KR: 5.2
+
+learning:
+  vocabulary_min: 5
+  vocabulary_max: 10
+  quiz_min: 3
+  quiz_max: 5
+  max_slow_utterances: 10
+  slow_rate: "-25%"
+  shadowing_pause_ms: [1200, 2000]
+
+weekly_review:
+  # Built on Sundays (Japan time) by daily-multilang.yml, or on demand with its weekly_review input.
+  lookback_days: 7
+  max_expressions: 30
+
+hosts:
+  MC_F: "ミナ"
+  MC_M: "レン"
+
+tts:
+  # Engines tried in order; each gets every episode still without audio, and one episode never mixes engines.
+  # Edge TTS needs no key and is always the last resort. Override with the TTS_ORDER repository variable.
+  #   fish            Fish Audio S2.1 Pro free API (FISH_API_KEY), free until 2026-11-30 as announced
+  #   gemini          Gemini TTS free tier (GEMINI_API_KEY), about 10 episodes a day
+  #   kaggle          CosyVoice 3 on a free Kaggle T4 GPU (KAGGLE_USERNAME + KAGGLE_API_TOKEN), ~30 GPU h a week
+  #   cosyvoice       CosyVoice 3 on Modal's free $30/month credit (MODAL_TOKEN_ID + MODAL_TOKEN_SECRET)
+  #   google_cloud    Cloud TTS Chirp 3: HD, 1M characters a month free (Cloud Text-to-Speech API enabled)
+  #   cosyvoice_local CosyVoice 3 on the Actions runner's CPU: no account, unlimited, slow (time-boxed)
+  #   openai          paid; add it to TTS_ORDER yourself if you ever want it
+  order: [fish, gemini, kaggle, cosyvoice, google_cloud, cosyvoice_local, edge]
+  # Target-language lines are spoken at this tempo for learners (pitch preserved); Japanese keeps its natural
+  # pace. Engines that take a speed (Fish, CosyVoice, Cloud TTS) set it natively; others are time-stretched.
+  target_language_tempo: 0.85
+  fish:
+    # "s2.1-pro-free" is the free model id from Fish Audio's announcement (2026-06-23). Paid models are never
+    # listed here, so this can never bill. After available_until the engine is skipped; update the date if
+    # Fish extends the offer.
+    models: ["s2.1-pro-free"]
+    available_until: "2026-11-30"
+    latency: "normal"
+    parallel_requests: 3
+    max_attempts: 5
+    # Each host is cloned from the same clips as CosyVoice. A Fish voice id (reference_id) can replace a clip.
+    voices:
+      MC_F: {reference: "assets/voices/mina", language: "ja-JP", reference_id: ""}
+      MC_M: {reference: "assets/voices/ren", language: "ja-JP", reference_id: ""}
+  kaggle:
+    # One private kernel run per day renders every pending episode. Kernel internet access requires a
+    # phone-verified Kaggle account. The kernel appears at kaggle.com/code/<user>/<kernel_slug>.
+    kernel_slug: "journey-talk-tts"
+    accelerator: "NvidiaTeslaT4"
+    timeout_minutes: 150
+    poll_seconds: 60
+    torch_index: "https://download.pytorch.org/whl/cu121"
+  cosyvoice_local:
+    # Runs only on the GitHub Actions runner (or with COSYVOICE_LOCAL=1). The workflow installs Python 3.10
+    # and caches the model; episodes not finished within max_minutes go on to the next engine.
+    python: "python3.10"
+    cache_dir: ".cache/cosyvoice"
+    max_minutes: 200
+    torch_index: "https://download.pytorch.org/whl/cpu"
+  gemini:
+    # Free tier: about 10 requests per model per day, so the whole episode is one multi-speaker request,
+    # split into lines afterwards. Tried in order; GEMINI_TTS_MODEL overrides.
+    models: ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"]
+    voices:
+      MC_F: "Aoede"
+      MC_M: "Puck"
+    speaker_labels:
+      MC_F: "Mina"
+      MC_M: "Ren"
+    # Appended to every line so the hand-over pauses stand out when the take is split into lines.
+    line_break_tag: "[long pause]"
+    max_attempts: 4
+  cosyvoice:
+    # CosyVoice 3 on Modal (scripts/modal_cosyvoice.py). Needs the MODAL_TOKEN_ID / MODAL_TOKEN_SECRET secrets;
+    # Modal's free $30/month credit covers roughly a month of daily episodes, and calls simply fail (falling
+    # through to the next engine) once it is used up. Voices are cloned from these Gemini-voiced clips, which
+    # the Kaggle and runner-CPU CosyVoice engines use too.
+    app_name: "journey-talk-cosyvoice"
+    voices:
+      MC_F: {reference: "assets/voices/mina", language: "ja-JP"}
+      MC_M: {reference: "assets/voices/ren", language: "ja-JP"}
+  google_cloud:
+    # Cloud Text-to-Speech, Chirp 3: HD (same voice family as Gemini). Free tier: 1M characters/month.
+    # Needs the Cloud Text-to-Speech API enabled on the key's project; GOOGLE_TTS_API_KEY, else GEMINI_API_KEY.
+    voices:
+      MC_F: "Aoede"
+      MC_M: "Puck"
+    # Kept below the free tier; usage is committed to state/google-tts-usage.json by the daily workflow.
+    monthly_character_budget: 950000
+    usage_file: "state/google-tts-usage.json"
+    max_attempts: 5
+  openai:
+    # Paid, so not in the default order. Used only when named in TTS_ORDER and OPENAI_API_KEY is set.
+    models: ["gpt-4o-mini-tts", "tts-1-hd"]
+    voices:
+      MC_F: "coral"
+      MC_M: "ash"
+    instructions: "Speak in {language} as a warm, relaxed radio host chatting naturally with a co-host. Use native pronunciation."
+    max_attempts: 5
 
 qa:
+  # Each edition is checked on its own; only editions that pass are published.
   max_silence_seconds: 3.0
+  mean_volume_db: [-26.0, -11.0]
+  max_peak_db: -0.4
   whisper_model: "base"
   minimum_transcript_ratio: 0.30
 
