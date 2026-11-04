@@ -61,3 +61,88 @@ class CloudPipelineTests(unittest.TestCase):
             text = (root / "status.md").read_text()
             self.assertIn("成功 1件 / 失敗 1件", text)
             self.assertIn("直近実行の失敗", text)
+
+    def run_weekly_status(self, youtube_configured: str, youtube_state: dict | None) -> str:
+        status = load_script("weekly_status")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "runs.json").write_text(json.dumps([{"conclusion": "success"}]))
+            (root / "manifest.json").write_text(json.dumps({"episode_date": "2026-11-02", "duration_seconds": 655.2, "utterances": 110}))
+            if youtube_state is not None:
+                (root / "youtube.json").write_text(json.dumps(youtube_state))
+            old_argv = __import__("sys").argv
+            try:
+                __import__("sys").argv = [
+                    "weekly_status", "--runs", str(root / "runs.json"), "--manifest", str(root / "manifest.json"),
+                    "--youtube-state", str(root / "youtube.json"), "--youtube-configured", youtube_configured,
+                    "--output", str(root / "status.md"),
+                ]
+                self.assertEqual(status.main(), 0)
+            finally:
+                __import__("sys").argv = old_argv
+            return (root / "status.md").read_text()
+
+    def test_weekly_status_ignores_youtube_when_not_configured(self):
+        text = self.run_weekly_status("false", None)
+        self.assertNotIn("YouTube公開状態が未記録", text)
+        self.assertIn("未設定", text)
+        self.assertIn("確認できる重大ブロッカーなし", text)
+
+    def test_weekly_status_flags_missing_youtube_upload_when_configured(self):
+        text = self.run_weekly_status("true", None)
+        self.assertIn("YouTube公開状態が未記録", text)
+
+
+class EdgeRetryTests(unittest.TestCase):
+    def setUp(self):
+        import sys
+        sys.path.insert(0, str(PROJECT_DIR / "scripts"))
+        self.retry = load_script("edge_retry")
+        self.sleeps: list[float] = []
+
+    async def fake_sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+
+    def run_with(self, outcomes: list, attempts: int = 7):
+        import asyncio
+        calls = {"n": 0}
+
+        async def call():
+            outcome = outcomes[calls["n"]]
+            calls["n"] += 1
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+
+        result = asyncio.run(self.retry.with_retry(call, "test", attempts=attempts, sleep=self.fake_sleep))
+        return result, calls["n"]
+
+    def rate_limited(self):
+        import aiohttp
+        return aiohttp.WSServerHandshakeError(None, (), status=429, message="Invalid response status")
+
+    def test_rate_limit_is_retried_until_success(self):
+        result, calls = self.run_with([self.rate_limited(), self.rate_limited(), "ok"])
+        self.assertEqual(result, "ok")
+        self.assertEqual(calls, 3)
+        self.assertEqual(len(self.sleeps), 2)
+        self.assertLess(self.sleeps[0], self.sleeps[1])
+
+    def test_gives_up_after_the_last_attempt(self):
+        import aiohttp
+        with self.assertRaises(aiohttp.WSServerHandshakeError):
+            self.run_with([self.rate_limited()] * 3, attempts=3)
+        self.assertEqual(len(self.sleeps), 2)
+
+    def test_non_retryable_errors_fail_immediately(self):
+        with self.assertRaises(ValueError):
+            self.run_with([ValueError("bad voice"), "ok"])
+        self.assertEqual(self.sleeps, [])
+
+    def test_no_audio_received_is_retried(self):
+        from edge_tts.exceptions import NoAudioReceived
+        result, calls = self.run_with([NoAudioReceived("empty"), "ok"])
+        self.assertEqual((result, calls), ("ok", 2))
+
+    def test_backoff_is_capped(self):
+        self.assertLessEqual(self.retry.backoff_delay(20), self.retry.MAX_DELAY_SECONDS + 2)

@@ -212,5 +212,11 @@ jobs:
           if [[ "$(date +%u)" != "1" ]]; then exit 0; fi
           DATE="${{ steps.date.outputs.value }}"
           gh run list --workflow daily-radio.yml --limit 7 --json conclusion,createdAt,databaseId,url > build/runs.json
-          python scripts/weekly_status.py             --runs build/runs.json             --manifest "build/${DATE}/media-manifest.json"             --youtube-state "docs/episodes/${DATE}.json"             --output build/weekly-status.md
-          gh issue create             --title "Journey Talk weekly status — ${DATE}"             --body-file build/weekly-status.md
+          python scripts/weekly_status.py             --runs build/runs.json             --manifest "build/${DATE}/media-manifest.json"             --youtube-state "docs/episodes/${DATE}.json"             --youtube-configured "${{ steps.publish.outputs.youtube }}"             --output build/weekly-status.md
+          NEW_URL=$(gh issue create             --title "Journey Talk weekly status — ${DATE}"             --body-file build/weekly-status.md)
+          # Only the newest report stays open; older ones are superseded.
+          gh issue list --state open --search "\"Journey Talk weekly status\" in:title" --json number,title \
+            --jq ".[] | select(.title | startswith(\"Journey Talk weekly status — \")) | select(.title != \"Journey Talk weekly status — ${DATE}\") | .number" \
+            | while read -r NUMBER; do
+                gh issue close "$NUMBER" --reason "not planned" --comment "Superseded by ${NEW_URL}" || true
+              done
