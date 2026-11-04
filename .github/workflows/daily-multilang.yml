@@ -74,8 +74,9 @@ jobs:
   build-publish:
     needs: plan
     runs-on: ubuntu-latest
-    # The runner-CPU CosyVoice tier is time-boxed (tts.cosyvoice_local.max_minutes); this leaves room around it.
-    timeout-minutes: 330
+    # The keyless tiers on the runner's CPU (Ollama scripts, CosyVoice voices) are time-boxed so that the
+    # whole job, including the Edge fallback, QA and publishing, fits in this limit.
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       max-parallel: 1  # days are published one after another (shared history and feeds)
@@ -93,6 +94,8 @@ jobs:
       GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # Without any key above, an open model runs on the runner through Ollama (no account needed).
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
       # Voices (each optional; Edge TTS is the keyless last resort).
       FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
       GEMINI_TTS_MODEL: ${{ vars.GEMINI_TTS_MODEL }}
@@ -109,6 +112,9 @@ jobs:
       PODCAST_EMAIL: ${{ vars.PODCAST_EMAIL }}
 
     steps:
+      - name: Record the job start (time budgets for the CPU tiers)
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -167,6 +173,47 @@ jobs:
         id: day
         run: echo "weekday=$(date -d "$DATE" +%u)" >> "$GITHUB_OUTPUT"
 
+      - name: Choose the script writer
+        id: writer
+        shell: bash
+        run: |
+          if [ -f "incoming/${DATE}.json" ] || [ -n "$GEMINI_API_KEY$MISTRAL_API_KEY$OPENROUTER_API_KEY" ] \
+             || [ "$DATE" != "${{ needs.plan.outputs.today }}" ]; then
+            echo "local=false" >> "$GITHUB_OUTPUT"
+          else
+            MODEL="${OLLAMA_MODEL:-$(python -c 'import yaml; print(yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))["provider"]["ollama"]["model"])')}"
+            echo "local=true" >> "$GITHUB_OUTPUT"
+            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+            echo "> 🖥️ APIキー未設定のため、台本はランナー上のオープンモデル（Ollama: \`$MODEL\`）で書きます。" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Cache the local script model
+        if: steps.writer.outputs.local == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .cache/ollama
+          key: ${{ runner.os }}-ollama-${{ steps.writer.outputs.model }}
+
+      - name: Start the local script writer (Ollama, no API key)
+        if: steps.writer.outputs.local == 'true'
+        continue-on-error: true  # if it cannot start, the day is skipped with a notice as before
+        timeout-minutes: 25
+        shell: bash
+        env:
+          MODEL: ${{ steps.writer.outputs.model }}
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl stop ollama 2>/dev/null || true  # serve from the cached model directory instead
+          read -r CONTEXT BUDGET < <(python -c 'import yaml; o = yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))["provider"]["ollama"]; print(o["context_tokens"], o["budget_minutes"])')
+          mkdir -p .cache/ollama
+          OLLAMA_MODELS="$PWD/.cache/ollama" OLLAMA_CONTEXT_LENGTH="$CONTEXT" OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=-1 \
+            nohup ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:11434/api/version >/dev/null && break; sleep 2; done
+          ollama pull "$MODEL"
+          echo "OLLAMA_BASE_URL=http://127.0.0.1:11434" >> "$GITHUB_ENV"
+          echo "SCRIPT_DEADLINE=$(( $(date +%s) + BUDGET * 60 ))" >> "$GITHUB_ENV"
+          echo "Ollama $(ollama --version | tail -1) ready with $MODEL; script budget ${BUDGET} min"
+
       - name: Write or load the five language scripts
         shell: bash
         run: |
@@ -176,14 +223,20 @@ jobs:
           elif [ "$DATE" != "${{ needs.plan.outputs.today }}" ]; then
             echo "::error::No incoming/${DATE}.json: past days can only be built from reviewed scripts."
             exit 3
-          elif [ -z "$GEMINI_API_KEY$MISTRAL_API_KEY$OPENROUTER_API_KEY" ]; then
+          elif [ -z "$GEMINI_API_KEY$MISTRAL_API_KEY$OPENROUTER_API_KEY$OLLAMA_BASE_URL" ]; then
             # Not configured is not a failure: skip today's language editions without turning the run red.
-            echo "::notice title=No script writer — skipped::Add GEMINI_API_KEY, MISTRAL_API_KEY or OPENROUTER_API_KEY (Settings → Secrets and variables → Actions), or commit incoming/${DATE}.json, to build the language editions."
-            echo "> ⏭️ スクリプト作成用のAPIキー（GEMINI_API_KEY / MISTRAL_API_KEY / OPENROUTER_API_KEY）が未設定のため、${DATE} の言語別エディションはスキップしました。" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=No script writer — skipped::The local Ollama writer could not start (see its step log). Add GEMINI_API_KEY, MISTRAL_API_KEY or OPENROUTER_API_KEY, or commit incoming/${DATE}.json."
+            echo "> ⏭️ 台本を書くAIが使えなかったため（APIキー未設定・ローカルのOllamaも起動失敗）、${DATE} の言語別エディションはスキップしました。" >> "$GITHUB_STEP_SUMMARY"
             echo "SKIP_BUILD=true" >> "$GITHUB_ENV"
           else
             python scripts/build_language_episodes.py --date "$DATE"
           fi
+
+      - name: Stop the local script writer (frees memory for the voices)
+        if: always() && steps.writer.outputs.local == 'true'
+        run: |
+          pkill -f "ollama serve" || true
+          tail -n 20 "$RUNNER_TEMP/ollama.log" 2>/dev/null || true
 
       - name: Weekend review editions
         if: env.SKIP_BUILD != 'true' && (steps.day.outputs.weekday == '7' || inputs.weekly_review)
@@ -199,6 +252,13 @@ jobs:
       - name: Render MP3 files
         if: env.SKIP_BUILD != 'true'
         run: |
+          # CPU CosyVoice gets what is left of the job after a reserve for Edge, QA and publishing.
+          LEFT=$(( 350 - ($(date +%s) - JOB_STARTED) / 60 - 60 ))
+          if [ "$LEFT" -lt 0 ]; then LEFT=0; fi
+          export COSYVOICE_LOCAL_MINUTES="${COSYVOICE_LOCAL_MINUTES:-$LEFT}"
+          CONFIGURED=$(python -c 'import yaml; print(int(yaml.safe_load(open("cloud_languages.yaml", encoding="utf-8"))["tts"]["cosyvoice_local"]["max_minutes"]))')
+          if [ "$COSYVOICE_LOCAL_MINUTES" -gt "$CONFIGURED" ]; then COSYVOICE_LOCAL_MINUTES="$CONFIGURED"; fi
+          echo "CPU voice budget: ${COSYVOICE_LOCAL_MINUTES} min"
           python scripts/render_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
             --output-dir "build/languages/$DATE"

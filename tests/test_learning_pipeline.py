@@ -871,3 +871,63 @@ class RenderTimingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OllamaWriterTests(unittest.TestCase):
+    """The keyless script writer: an open model served by Ollama on the runner."""
+
+    NO_KEYS = {"GEMINI_API_KEY": "", "MISTRAL_API_KEY": "", "OPENROUTER_API_KEY": "", "GEMINI_MODEL": "", "OLLAMA_MODEL": ""}
+
+    def test_ollama_is_used_only_when_the_local_server_is_up(self):
+        with mock.patch.dict("os.environ", {**self.NO_KEYS, "OLLAMA_BASE_URL": ""}):
+            self.assertEqual(build.text_models(BASE_CFG), [])
+            self.assertFalse(build.any_script_provider())
+        with mock.patch.dict("os.environ", {**self.NO_KEYS, "OLLAMA_BASE_URL": "http://127.0.0.1:11434"}):
+            self.assertEqual(build.text_models(BASE_CFG), [f"ollama:{BASE_CFG['provider']['ollama']['model']}"])
+            self.assertTrue(build.any_script_provider())
+            self.assertEqual(build.provider_of("ollama:qwen2.5:7b"), "ollama")
+        env = {**self.NO_KEYS, "OLLAMA_BASE_URL": "http://127.0.0.1:11434", "OLLAMA_MODEL": "qwen2.5:14b"}
+        with mock.patch.dict("os.environ", env):
+            self.assertEqual(build.text_models(BASE_CFG), ["ollama:qwen2.5:14b"])
+
+    def test_ollama_request_goes_to_the_local_server_without_a_key(self):
+        calls = []
+
+        class Response:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"finish_reason": "stop", "message": {"content": '{"ids": ["N01"]}'}}]}
+
+        def fake_post(url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+        env = {**self.NO_KEYS, "OLLAMA_BASE_URL": "http://127.0.0.1:11434/", "SCRIPT_DEADLINE": ""}
+        with mock.patch.dict("os.environ", env), mock.patch.object(build.requests, "post", side_effect=fake_post):
+            answer, model = build.gemini_json_from("prompt", BASE_CFG)
+        self.assertEqual(answer, {"ids": ["N01"]})
+        self.assertEqual(model, f"ollama:{BASE_CFG['provider']['ollama']['model']}")
+        url, kwargs = calls[0]
+        self.assertEqual(url, "http://127.0.0.1:11434/v1/chat/completions")
+        self.assertNotIn("Authorization", kwargs["headers"])
+        self.assertEqual(kwargs["json"]["model"], BASE_CFG["provider"]["ollama"]["model"])
+        self.assertLessEqual(kwargs["json"]["max_tokens"], BASE_CFG["provider"]["ollama"]["max_output_tokens"])
+        self.assertGreaterEqual(kwargs["timeout"][1], 600)  # a CPU model needs minutes, not seconds
+
+    def test_spent_script_budget_skips_remaining_editions(self):
+        cfg = test_cfg()
+        env = {**self.NO_KEYS, "OLLAMA_BASE_URL": "http://127.0.0.1:11434", "SCRIPT_DEADLINE": str(build.time.time() - 1)}
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.object(build, "load_config", return_value=cfg), \
+                mock.patch.object(build, "collect_news", return_value=STORIES), \
+                mock.patch.object(build, "choose_shared_stories", return_value=STORIES), \
+                mock.patch.object(build, "gemini_json_from") as writer, \
+                mock.patch.dict("os.environ", env), \
+                mock.patch.object(sys, "argv", ["build", "--date", DATE, "--output-dir", temporary]):
+            self.assertEqual(build.main(), 1)
+            manifest = json.loads((Path(temporary) / DATE / "manifest.json").read_text(encoding="utf-8"))
+        writer.assert_not_called()
+        self.assertEqual(len(manifest["failed"]), len(cfg["languages"]))
+        self.assertTrue(all("budget" in item["error"] for item in manifest["failed"]))
