@@ -27,6 +27,7 @@ from tts_engines import (  # noqa: E402
     slow_down,
     tempo_from_rate,
 )
+from edge_retry import PACE_SECONDS, with_retry  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "cloud_languages.yaml"
@@ -68,11 +69,15 @@ async def synthesize(cfg: dict, utterances: list[dict], work: Path) -> tuple[lis
         voice = voice_for(cfg, utterance["language"], utterance["speaker"])
         rate = slow_rate if utterance.get("slow") else "+0%"
         path = work / f"{index:03d}.mp3"
-        words = await synthesize_one(utterance["text"], voice, rate, path)
+        words = await with_retry(
+            lambda: synthesize_one(utterance["text"], voice, rate, path),
+            f"line {index}",
+        )
         if not path.is_file() or path.stat().st_size == 0:
             raise RuntimeError(f"TTS failed at utterance {index}")
         paths.append(path)
         word_timings.append(words)
+        await asyncio.sleep(PACE_SECONDS)
     return paths, word_timings
 
 

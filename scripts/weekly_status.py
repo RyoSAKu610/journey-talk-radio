@@ -11,7 +11,14 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--youtube-state", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--youtube-configured",
+        choices=("true", "false"),
+        default="true",
+        help="false when the YOUTUBE_* secrets are not set: upload is optional, so it is not a blocker",
+    )
     args = parser.parse_args()
+    youtube_configured = args.youtube_configured == "true"
     runs = json.loads(args.runs.read_text(encoding="utf-8"))
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
     successes = sum(run.get("conclusion") == "success" for run in runs)
@@ -20,7 +27,7 @@ def main() -> int:
     blockers = []
     if failures:
         blockers.append(f"直近実行の失敗: {failures}件（Actionsログ確認）")
-    if not youtube.get("video_id"):
+    if youtube_configured and not youtube.get("video_id"):
         blockers.append("YouTube公開状態が未記録")
     if not blockers:
         blockers.append("確認できる重大ブロッカーなし")
@@ -30,7 +37,7 @@ def main() -> int:
         "### 進捗",
         f"- 直近Actions: 成功 {successes}件 / 失敗 {failures}件",
         f"- 最新エピソード: {manifest['episode_date']} / {manifest['duration_seconds']}秒 / {manifest['utterances']}発話",
-        f"- YouTube: {youtube.get('url', '未記録')}",
+        f"- YouTube: {youtube.get('url', '未記録') if youtube_configured else '未設定（任意・YOUTUBE_* シークレット未登録のためスキップ）'}",
         "- Spotify: RSS更新後に自動取得される構成",
         "",
         "### ブロッカー",
@@ -39,7 +46,7 @@ def main() -> int:
         "### 次のマイルストーン",
         "- 次回日次実行の成功を確認",
         "- RSSの到達性と最新enclosureを確認",
-        "- YouTubeの処理完了と公開状態を確認",
+        *(["- YouTubeの処理完了と公開状態を確認"] if youtube_configured else []),
         "",
     ]
     args.output.write_text("\n".join(body), encoding="utf-8")

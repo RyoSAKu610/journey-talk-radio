@@ -5,12 +5,16 @@ import asyncio
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont
 from pydub import AudioSegment
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from edge_retry import PACE_SECONDS, with_retry  # noqa: E402
 
 
 VOICE_MAP = {
@@ -67,10 +71,14 @@ async def synthesize(utterances: list[dict], work_dir: Path) -> list[Path]:
         if voice is None:
             raise ValueError(f"No reviewed voice for {key}")
         path = work_dir / f"{index:03d}.mp3"
-        await edge_tts.Communicate(utterance["text"], voice=voice).save(str(path))
+        await with_retry(
+            lambda: edge_tts.Communicate(utterance["text"], voice=voice).save(str(path)),
+            f"line {index}",
+        )
         if not path.is_file() or path.stat().st_size == 0:
             raise RuntimeError(f"TTS produced no audio for slot {utterance['slot_id']}")
         paths.append(path)
+        await asyncio.sleep(PACE_SECONDS)
     return paths
 
 

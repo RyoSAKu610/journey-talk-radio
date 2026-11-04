@@ -11,6 +11,7 @@ on:
       - "scripts/build_weekly_review.py"
       - "scripts/render_language_episodes.py"
       - "scripts/tts_engines.py"
+      - "scripts/edge_retry.py"
       - "scripts/cosyvoice_core.py"
       - "scripts/cosyvoice_worker.py"
       - "scripts/modal_cosyvoice.py"
@@ -176,24 +177,27 @@ jobs:
             echo "::error::No incoming/${DATE}.json: past days can only be built from reviewed scripts."
             exit 3
           elif [ -z "$GEMINI_API_KEY$MISTRAL_API_KEY$OPENROUTER_API_KEY" ]; then
-            echo "::error title=No script writer::Add GEMINI_API_KEY, MISTRAL_API_KEY or OPENROUTER_API_KEY (Settings → Secrets and variables → Actions), or commit incoming/${DATE}.json."
-            exit 1
+            # Not configured is not a failure: skip today's language editions without turning the run red.
+            echo "::notice title=No script writer — skipped::Add GEMINI_API_KEY, MISTRAL_API_KEY or OPENROUTER_API_KEY (Settings → Secrets and variables → Actions), or commit incoming/${DATE}.json, to build the language editions."
+            echo "> ⏭️ スクリプト作成用のAPIキー（GEMINI_API_KEY / MISTRAL_API_KEY / OPENROUTER_API_KEY）が未設定のため、${DATE} の言語別エディションはスキップしました。" >> "$GITHUB_STEP_SUMMARY"
+            echo "SKIP_BUILD=true" >> "$GITHUB_ENV"
           else
             python scripts/build_language_episodes.py --date "$DATE"
           fi
 
       - name: Weekend review editions
-        if: steps.day.outputs.weekday == '7' || inputs.weekly_review
+        if: env.SKIP_BUILD != 'true' && (steps.day.outputs.weekday == '7' || inputs.weekly_review)
         continue-on-error: true  # a bonus edition; never costs the day's regular editions
         run: python scripts/build_weekly_review.py --date "$DATE" --docs-dir docs
 
       - name: Deploy CosyVoice on Modal (optional)
-        if: env.MODAL_TOKEN_ID != ''
+        if: env.SKIP_BUILD != 'true' && env.MODAL_TOKEN_ID != ''
         continue-on-error: true  # if this fails, rendering simply uses the next engine
         working-directory: scripts
         run: modal deploy modal_cosyvoice.py
 
       - name: Render MP3 files
+        if: env.SKIP_BUILD != 'true'
         run: |
           python scripts/render_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
@@ -209,6 +213,7 @@ jobs:
           PY
 
       - name: Audio QA (each edition on its own)
+        if: env.SKIP_BUILD != 'true'
         run: |
           python scripts/qa_language_episodes.py \
             --episode-dir "output/languages/$DATE" \
@@ -229,7 +234,7 @@ jobs:
             build/qa/${{ matrix.date }}/
 
       - name: Publish date-stamped release (QA-passed editions)
-        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true' && env.SKIP_BUILD != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -253,7 +258,7 @@ jobs:
           gh release upload "$TAG" build/qa/"$DATE"/* --clobber
 
       - name: Update feeds and web player data
-        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true' && env.SKIP_BUILD != 'true'
         run: |
           git pull --rebase --autostash origin main  # the previous day of a backfill may have just been pushed
           python scripts/publish_multilang_site.py \
@@ -264,7 +269,7 @@ jobs:
             --docs-dir docs
 
       - name: Persist feed and episode history
-        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true' && env.SKIP_BUILD != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -283,11 +288,29 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Check that GitHub Pages is enabled for Actions
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Without Pages (Settings → Pages → Source: GitHub Actions) configure-pages fails with 404;
+          # skip the deploy with a notice instead of failing the whole run every day.
+          BUILD_TYPE=$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '.build_type' 2>/dev/null || true)
+          if [ "$BUILD_TYPE" = "workflow" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=GitHub Pages not enabled — deploy skipped::Settings → Pages → Build and deployment → Source: GitHub Actions to publish the web player (current: ${BUILD_TYPE:-disabled})."
+            echo "> ⏭️ GitHub Pages が「GitHub Actions」ソースで有効化されていないため、Webプレーヤーのデプロイをスキップしました（Settings → Pages → Source: GitHub Actions）。" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/checkout@v6
+        if: steps.pages.outputs.enabled == 'true'
         with:
           ref: main  # includes the history the build jobs just pushed
 
       - name: Stage offline audio for the web player
+        if: steps.pages.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           OFFLINE_DAYS: "3"
@@ -303,13 +326,16 @@ jobs:
           du -sh docs/offline
 
       - name: Configure Pages
+        if: steps.pages.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload mobile site
+        if: steps.pages.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: docs
 
       - name: Deploy mobile site
+        if: steps.pages.outputs.enabled == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
