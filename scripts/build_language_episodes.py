@@ -39,7 +39,15 @@ def provider_of(model: str) -> str:
 
 
 # Environment variable holding each script provider's key. A provider without a key is simply not asked.
-PROVIDER_KEYS = {"gemini": "GEMINI_API_KEY", "mistral": "MISTRAL_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+# Ollama needs no key: OLLAMA_BASE_URL is set by the workflow once the local server on the runner is up.
+PROVIDER_KEYS = {
+    "gemini": "GEMINI_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "ollama": "OLLAMA_BASE_URL",
+}
+# Providers that cost an API key. Ollama runs an open model on the runner itself.
+KEYED_PROVIDERS = ("gemini", "mistral", "openrouter")
 
 
 def has_key(provider: str) -> bool:
@@ -53,7 +61,7 @@ def text_models(cfg: dict) -> list[str]:
     round with one model from each costs nothing extra. Models out of quota or without a key are skipped.
     """
     override = os.getenv("GEMINI_MODEL", "").strip()
-    models = [override, *cfg["provider"]["models"]]
+    models = [override, *cfg["provider"]["models"], *ollama_models(cfg)]
     seen: set[str] = set()
     out: list[str] = []
     for model in models:
@@ -64,6 +72,12 @@ def text_models(cfg: dict) -> list[str]:
     return out
 
 
+def ollama_models(cfg: dict) -> list[str]:
+    """The keyless writer: an open model served by Ollama on the runner. OLLAMA_MODEL overrides the config."""
+    model = os.getenv("OLLAMA_MODEL", "").strip() or str(cfg["provider"].get("ollama", {}).get("model", "")).strip()
+    return [f"ollama:{model}"] if model else []
+
+
 def last_resort_models(cfg: dict) -> list[str]:
     """Weaker models used only when no regular model can answer (they write much shorter scripts)."""
     return [m for m in cfg["provider"].get("last_resort_models", []) if m not in EXHAUSTED and has_key(provider_of(m))]
@@ -71,6 +85,23 @@ def last_resort_models(cfg: dict) -> list[str]:
 
 def any_script_provider() -> bool:
     return any(has_key(p) for p in PROVIDER_KEYS)
+
+
+def script_deadline() -> float | None:
+    """Epoch seconds after which no new script work starts (SCRIPT_DEADLINE, set by the workflow).
+
+    A model on the runner's CPU writes an edition in tens of minutes; the deadline leaves the rest of the
+    job for voices and QA, so a slow day publishes the editions that are done instead of none."""
+    value = os.getenv("SCRIPT_DEADLINE", "").strip()
+    try:
+        return float(value) if value else None
+    except ValueError:
+        return None
+
+
+def time_left() -> float | None:
+    deadline = script_deadline()
+    return None if deadline is None else deadline - time.time()
 
 
 # Models whose free daily quota ran out during this run; asking again today only wastes time.
@@ -205,6 +236,12 @@ COMPATIBLE_ENDPOINTS = {
     "mistral": "https://api.mistral.ai/v1/chat/completions",
     "openrouter": "https://openrouter.ai/api/v1/chat/completions",
 }
+
+
+def compatible_endpoint(provider: str) -> str:
+    if provider == "ollama":
+        return os.getenv("OLLAMA_BASE_URL", "").strip().rstrip("/") + "/v1/chat/completions"
+    return COMPATIBLE_ENDPOINTS[provider]
 OPENROUTER_MODELS = "https://openrouter.ai/api/v1/models"
 # Resolved once per run: "openrouter:free" -> the best free model OpenRouter lists today.
 FREE_MODEL_CACHE: dict[str, dict] = {}
@@ -240,15 +277,27 @@ def openrouter_free_model(cfg: dict) -> dict:
 
 
 def compatible_answer(provider: str, prompt: str, cfg: dict, models: list[str]) -> tuple[dict, str]:
-    """Chat-completions call for Mistral / OpenRouter. Returns (answer, 'provider:model')."""
+    """Chat-completions call for Mistral / OpenRouter / Ollama. Returns (answer, 'provider:model')."""
     api_key = os.getenv(PROVIDER_KEYS[provider], "").strip()
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {} if provider == "ollama" else {"Authorization": f"Bearer {api_key}"}
+    # A local CPU model answers in minutes, not seconds; the request may use the time left for scripts.
+    read_timeout: float = 300
+    if provider == "ollama":
+        settings = cfg["provider"].get("ollama", {})
+        read_timeout = float(settings.get("request_timeout_seconds", 3600))
+        left = time_left()
+        if left is not None:
+            if left < 120:
+                raise RuntimeError(f"no time left for {provider} in this run")
+            read_timeout = min(read_timeout, left)
     if provider == "openrouter":
         headers.update({"HTTP-Referer": "https://github.com/RyoSAKu610/journey-talk-radio", "X-Title": "Journey Talk"})
     problems: list[str] = []
     for model in models:
         name = model.split(":", 1)[1]
         max_tokens = int(cfg["episode"]["max_output_tokens"])
+        if provider == "ollama":
+            max_tokens = min(max_tokens, int(cfg["provider"].get("ollama", {}).get("max_output_tokens", 8192)))
         if provider == "openrouter" and name == "free":
             try:
                 pick = openrouter_free_model(cfg)
@@ -268,7 +317,7 @@ def compatible_answer(provider: str, prompt: str, cfg: dict, models: list[str]) 
         response = None
         for attempt in range(1, HTTP_ATTEMPTS + 1):
             try:
-                response = requests.post(COMPATIBLE_ENDPOINTS[provider], headers=headers, json=body, timeout=(20, 300))
+                response = requests.post(compatible_endpoint(provider), headers=headers, json=body, timeout=(20, read_timeout))
             except requests.RequestException as exc:
                 response = None
                 problems.append(f"{model}: {exc}")
@@ -732,6 +781,10 @@ def generate_episode(date: str, lang: dict, stories: list[dict], cfg: dict, prom
     feedback = ""
     spoken_only: dict | None = None
     for attempt in range(1, attempts + 1):
+        left = time_left()
+        if left is not None and left < 300 and attempt > 1:
+            print(f"[warn] {lang['slug']}: script time budget used up after {attempt - 1} round(s)")
+            break
         orders = contestant_orders(cfg)  # re-read each round: quotas may have run out meanwhile
         if not orders:
             raise RuntimeError(f"{lang['slug']}: every script model is out of free-tier quota today")
@@ -926,7 +979,10 @@ def main() -> int:
     cfg = load_config()
     bundle = load_bundle(args.bundle, args.date) if args.bundle else None
     if bundle is None and not any_script_provider():
-        raise SystemExit("No script source: add incoming/DATE.json or one of GEMINI_API_KEY / MISTRAL_API_KEY / OPENROUTER_API_KEY")
+        raise SystemExit(
+            "No script source: add incoming/DATE.json, one of GEMINI_API_KEY / MISTRAL_API_KEY / OPENROUTER_API_KEY, "
+            "or run Ollama and set OLLAMA_BASE_URL"
+        )
     if bundle is None:
         news = collect_news(cfg)
         selected = choose_shared_stories(cfg, news)
@@ -944,6 +1000,11 @@ def main() -> int:
         "failed": [],
     }
     for lang in cfg["languages"]:
+        left = time_left()
+        if bundle is None and left is not None and left < 300:
+            print(f"::warning::{lang['slug']} edition skipped: the script time budget for this run is used up")
+            manifest["failed"].append({"slug": lang["slug"], "error": "script time budget used up"})
+            continue
         try:
             if bundle is not None:
                 if lang["slug"] not in bundle:

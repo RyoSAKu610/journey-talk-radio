@@ -238,6 +238,7 @@ SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要で�
 ```text
 台本: incoming/YYYY-MM-DD.json（レビュー済み台本）があればそれを使用
       なければ RSS 3媒体 → 台本アリーナ（Gemini・Mistral・OpenRouter無料モデルが同時に書き、検証を通った最良の台本を採用）
+      キーが1つも無ければ → ランナー上のオープンモデル（Ollama + Qwen2.5、APIキー・登録不要）
   → 学習教材（日本語訳・単語・クイズ）
   → 音声: Fish Audio → Gemini TTS → Kaggle(CosyVoice) → Modal(CosyVoice) → Google Cloud → Actions CPU(CosyVoice) → Edge
   → 1本ずつQA（全デコード・無音・音量・Whisper照合）→ 合格した回だけ公開
@@ -248,7 +249,7 @@ SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要で�
 
 必要なのは「各サービスで登録してキーをコピー → GitHub に貼る」だけです。貼る場所はすべて同じです：
 **GitHub のこのリポジトリ → Settings → Secrets and variables → Actions → New repository secret**（Name と Secret を入れて Add secret）。
-どれも任意で、登録しなかったものは自動で飛ばされます（台本は `incoming/` か下の①〜③のどれか1つ、音声は何も無くても Edge で必ず作れます）。
+どれも任意で、登録しなかったものは自動で飛ばされます。**何も登録しなくても毎日動きます**：台本はランナー上の Ollama（オープンモデル）が書き、声は Actions の CPU 上の CosyVoice と Edge TTS で作ります（キーを登録すると、より速く・高品質な台本／声に切り替わります）。
 
 **台本を書くAI（台本アリーナ）**
 
@@ -267,6 +268,15 @@ SpotifyへのRSS登録とメール確認は初回だけ人の操作が必要で�
 | ⑥ Modal（月30ドル分） | https://modal.com | 「Sign up」→ GitHub でログイン → **Settings → API Tokens → New Token** → 表示される2つの値をコピー | `MODAL_TOKEN_ID`（`ak-`）と `MODAL_TOKEN_SECRET`（`as-`） |
 | ⑦ Google Cloud TTS | ①のキーのプロジェクトで「Cloud Text-to-Speech API」を有効化 | 課金アカウントの紐付けを求められたら紐付け（無料枠内に自動で制御） | 追加不要（①のキー） |
 | ⑧ Actions の CPU | 登録不要 | このリポジトリは公開なので GitHub Actions の標準ランナーは無料・無制限。何もしなくても使われます | なし |
+
+### キー不要の台本（Ollama）
+
+APIキーが1つも無い日は、ワークフローが [Ollama](https://github.com/ollama/ollama) を GitHub Actions のランナーに入れて、オープンモデル `qwen2.5:7b`（日本語・ドイツ語・スペイン語・ロシア語・中国語・韓国語に対応）で台本を書きます。アカウントも課金も不要で、モデルは Actions のキャッシュに保存されます。
+
+- CPU で動くので1言語あたり数十分かかります。台本に使う時間は `provider.ollama.budget_minutes`（既定150分）までで、間に合わなかった言語はその日だけ飛ばし、書けた言語は公開します
+- 残りの時間を CPU の CosyVoice に回し、それでも足りない分は Edge TTS が読み上げます
+- モデルは Variable `OLLAMA_MODEL` で変えられます（例: `qwen2.5:3b` は速いが文章は簡素、`qwen2.5:14b` は丁寧だが遅い）
+- 台本はホスト型の Gemini などより簡素になります。品質を上げたいときだけ①〜③のキーを登録してください
 
 ### 台本アリーナ（Gemini・Mistral・OpenRouter）
 

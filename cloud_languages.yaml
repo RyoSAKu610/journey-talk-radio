@@ -19,6 +19,17 @@ provider:
     # then the largest context window. Only ":free" models are ever used (50 free requests a day).
     preferred: ["deepseek", "qwen3", "kimi", "glm", "gpt-oss", "llama-4", "gemma"]
     min_context: 32000
+  ollama:
+    # Keyless writer: Ollama (github.com/ollama/ollama) serves an open model on the Actions runner's CPU,
+    # so no account or API key is needed. The workflow starts it only when none of the keys above is set;
+    # it is slower (tens of minutes per edition) and writes simpler scripts than the hosted models.
+    # Qwen2.5 covers ja/de/es/ru/zh/ko. Override with the OLLAMA_MODEL repository variable.
+    model: "qwen2.5:7b"
+    context_tokens: 16384
+    max_output_tokens: 8192
+    request_timeout_seconds: 3600
+    # Minutes of the job given to writing scripts; editions not written by then are skipped that day.
+    budget_minutes: 150
 
 episode:
   minimum_seconds: 600
